@@ -19,6 +19,13 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
       - name: Install desktop dependencies
         run: npm ci
         working-directory: desktop
@@ -29,6 +36,10 @@ jobs:
 
       - name: Test desktop
         run: npm test
+        working-directory: desktop
+
+      - name: Test native runtime
+        run: cargo test --manifest-path src-tauri/Cargo.toml
         working-directory: desktop
 
       - name: Package desktop

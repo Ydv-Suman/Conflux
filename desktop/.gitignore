@@ -87,6 +87,9 @@ typings/
 
 # Vite
 .vite/
+dist/
 
-# Electron-Forge
+# Native build output
+src-tauri/target/
 out/
+src-tauri/gen/schemas/
