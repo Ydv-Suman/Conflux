@@ -1,42 +1,35 @@
 # Conflux Desktop
 
-This folder contains the Conflux desktop client, built with Electron, TypeScript, Vite, and Electron Forge.
+The Conflux desktop client uses Tauri 2, Rust, TypeScript, Vite, Tailwind CSS, and Yjs.
 
 ## Requirements
 
-- Node.js
+- Node.js 22
 - npm
+- Rust stable
+- [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/)
 
 ## Setup and run
-
-Run these commands from the repository root:
 
 ```bash
 cd desktop
 npm ci
+source "$HOME/.cargo/env"
 npm start
 ```
 
-## Available commands
+The `source` command makes Cargo available immediately after installing Rust. A newly opened terminal loads it automatically.
+
+## Commands
 
 ```bash
-npm start         # Run the app in development mode
-npm run lint      # Check TypeScript files with ESLint
-npm run package   # Package the app without creating an installer
-npm run make      # Create platform-specific distributables
-npm run publish   # Publish distributables (requires publisher configuration)
+npm start         # Run the Tauri app in development mode
+npm run dev       # Run only the Vite frontend
+npm run build     # Type-check and build the frontend
+npm run lint      # Check TypeScript with ESLint
+npm test          # Run the Yjs convergence check
+npm run package   # Build the native executable without an installer
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Build output is written to `out/` and is ignored by Git.
-
-## macOS Electron cache permission fix
-
-If Electron cannot write to `~/Library/Caches/electron`, restore ownership and reinstall its binary:
-
-```bash
-sudo chown -R "$(id -un)":"$(id -gn)" "$HOME/Library/Caches/electron"
-npx install-electron --no
-npm start
-```
-
-Do not run `npm install` with `sudo`.
+Generated frontend and Rust build output is ignored by Git.

@@ -8,15 +8,15 @@ This document describes the architecture being built. The current implementation
 
 ## Current system
 
-The first prototype runs entirely inside one Electron process:
+The first prototype runs entirely inside one Tauri application:
 
 ```text
 ┌──────────────────────────────────────────────────────┐
-│ Electron main process                                │
+│ Rust core                                            │
 │                                                      │
-│  Y.Doc ── persistence ── shared-document.yjs         │
+│  Yjs update log ── persistence ── app data directory │
 │    │                                                 │
-│    └── IPC relay ───────┬──────────────────────┐     │
+│    └── Tauri events ────┬──────────────────────┐     │
 │                         │                      │     │
 │                  Renderer A             Renderer B  │
 │                  Y.Doc + textarea       Y.Doc + textarea
@@ -27,12 +27,12 @@ The first prototype runs entirely inside one Electron process:
 
 | Component | Responsibility |
 | --- | --- |
-| Electron main process | Own the canonical in-memory `Y.Doc`, persist it locally, relay updates, and create windows |
-| Preload bridge | Expose only document state, document updates, and window creation through controlled IPC methods |
+| Rust core | Persist Yjs updates, emit updates to open windows, and create windows |
+| Tauri command boundary | Expose only document state, document updates, and window creation |
 | Renderer | Display the editor, maintain a local `Y.Doc`, and apply local or remote updates |
 | Yjs | Merge concurrent document changes and encode synchronization updates |
 
-The renderer has no direct Node.js, filesystem, or unrestricted Electron access.
+The renderer has no direct Node.js or unrestricted filesystem access.
 
 ## Next system: networked collaboration
 
@@ -91,8 +91,8 @@ Realtime Collaboration may persist updates asynchronously, but it must not call 
 
 ## Security boundary
 
-- Renderers receive narrowly scoped APIs through the preload bridge.
-- Filesystem and process access remain in the trusted main process.
+- Renderers receive narrowly scoped Tauri commands and events.
+- Filesystem and process access remain in the trusted Rust core.
 - Identity authenticates users and owns team capabilities.
 - Realtime Collaboration authorizes every room join before accepting document updates.
 - Repository paths are validated before future file operations.
@@ -114,12 +114,13 @@ Build each service only when its milestone begins. Do not add Redis, PostgreSQL,
 
 | Area | Technology |
 | --- | --- |
-| Desktop runtime | Electron |
-| Language | TypeScript |
-| Build tooling | Vite and Electron Forge |
+| Desktop runtime | Tauri 2 |
+| Native runtime | Rust |
+| Frontend language | TypeScript |
+| Build tooling | Vite and Tauri CLI |
 | Styling | Tailwind CSS |
 | Collaborative document | Yjs |
-| Local transport | Electron IPC |
+| Local transport | Tauri commands and events |
 | Network transport | WebSocket, next milestone |
 
 ## Target backend technology
