@@ -1,56 +1,70 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
 import started from 'electron-squirrel-startup';
+import * as Y from 'yjs';
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
+if (started) app.quit();
+
+const document = new Y.Doc();
+let documentPath = '';
 
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-    },
+  const window = new BrowserWindow({
+    width: 940,
+    height: 680,
+    minWidth: 620,
+    minHeight: 460,
+    backgroundColor: '#f4f3ef',
+    title: 'Conflux',
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
 
-  // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    void window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
+    void window.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+const saveDocument = () => {
+  writeFileSync(documentPath, Y.encodeStateAsUpdate(document));
+};
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+app.whenReady().then(() => {
+  documentPath = path.join(app.getPath('userData'), 'shared-document.yjs');
+
+  try {
+    Y.applyUpdate(document, readFileSync(documentPath));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  document.on('update', (_update, origin) => {
+    saveDocument();
+    const state = Y.encodeStateAsUpdate(document);
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed() && window.webContents.id !== origin) {
+        window.webContents.send('document:update', state);
+      }
+    }
+  });
+
+  ipcMain.handle('document:state', () => Y.encodeStateAsUpdate(document));
+  ipcMain.on('document:update', (event, update: Uint8Array) => {
+    if (update instanceof Uint8Array) Y.applyUpdate(document, update, event.sender.id);
+  });
+  ipcMain.on('window:open', createWindow);
+
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
-
-app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
