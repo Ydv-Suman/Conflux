@@ -1,0 +1,35 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "description": "Conflux collaborative desktop editor",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "start": "tauri dev",
+    "build": "tsc --noEmit && vite build",
+    "package": "tauri build --no-bundle",
+    "lint": "eslint --ext .ts,.tsx .",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Suman Yadav",
+    "email": "sumanydv615@gmail.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "~2.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@typescript-eslint/parser": "^8.70.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.32.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^5.4.21"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "~2.11.0",
+    "yjs": "^13.6.33"
+  }
+}
