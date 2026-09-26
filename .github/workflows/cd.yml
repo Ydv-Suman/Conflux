@@ -1,0 +1,14 @@
+name: CD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment target required
+        run: echo "CD is ready to configure when a deployment target exists."
