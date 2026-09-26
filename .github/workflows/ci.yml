@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Lint desktop
+        run: npm run lint
+        working-directory: desktop
+
+      - name: Test desktop
+        run: npm test
+        working-directory: desktop
+
+      - name: Test native runtime
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+        working-directory: desktop
+
+      - name: Package desktop
+        run: npm run package
+        working-directory: desktop
+
+      - name: Check whitespace errors
+        run: git diff --check HEAD^ HEAD || git diff --check $(git hash-object -t tree /dev/null) HEAD
