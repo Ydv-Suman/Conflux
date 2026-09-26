@@ -196,7 +196,7 @@ Charlie     DEVELOPER
 David       VIEWER
 ```
 
-Team membership and permissions are managed by the Collaboration Service.
+Team membership and permissions are managed by the Identity and Team Service.
 
 ---
 
@@ -1110,7 +1110,7 @@ RBAC + Policy Engine
 
 # Backend Architecture
 
-Conflux uses three backend services.
+Conflux uses four backend services: two implemented in Go and two in Java.
 
 ```text
                          CONFLUX DESKTOP
@@ -1119,18 +1119,17 @@ Conflux uses three backend services.
                        REST / WebSocket
                               │
                               ▼
-              ┌─────────────────────────────┐
-              │   COLLABORATION SERVICE     │
-              │             Go              │
-              └──────────────┬──────────────┘
-                             │
-                            gRPC
-                 ┌───────────┴───────────┐
-                 ▼                       ▼
-      ┌─────────────────────┐   ┌─────────────────────┐
-      │    AGENT SERVICE    │◄─►│  WORKSPACE SERVICE  │
-      │         Go          │   │        Java         │
-      └─────────────────────┘   └─────────────────────┘
+        ┌─────────────────────┐   ┌─────────────────────┐
+        │ REALTIME            │   │    AGENT SERVICE    │
+        │ COLLABORATION       │   │         Go          │
+        │ Go                  │   └─────────────────────┘
+        └─────────────────────┘
+
+        ┌─────────────────────┐   ┌─────────────────────┐
+        │ IDENTITY AND TEAM   │   │  WORKSPACE SERVICE  │
+        │ Java / Spring Boot  │   │ Java / Spring Boot  │
+        └─────────────────────┘   └─────────────────────┘
+                       │ gRPC / Protocol Buffers │
 ```
 
 Internal service communication uses:
@@ -1143,38 +1142,20 @@ Protocol Buffers
 
 ---
 
-# Collaboration Service
+# Realtime Collaboration Service
 
 **Language:** Go
 
-The Collaboration Service owns the human and realtime collaboration domain.
+The Realtime Collaboration Service owns the latency-sensitive collaboration path.
 
 Primary question:
 
-> Who is collaborating, and what are they allowed to do?
+> Which authorized clients are connected, and how do their live changes converge?
 
 Responsibilities:
 
 ```text
-Authentication
-
-Teams
-
-Members
-
-Invitations
-
-Roles
-
-RBAC
-
-Leadership priority
-
-Session leadership
-
 Presence
-
-Team chat
 
 WebSocket connections
 
@@ -1187,15 +1168,47 @@ Active document sessions
 Cursor synchronization
 
 Reconnect / resynchronization
+```
 
-Approval workflows
+---
 
-Approval quorum
+# Identity and Team Service
+
+**Language:** Java
+
+**Framework:** Spring Boot
+
+The Identity and Team Service owns users, organizational membership, and durable access rules.
+
+Primary question:
+
+> Who is this user, and what are they allowed to do?
+
+Responsibilities:
+
+```text
+Authentication
+
+Teams
+
+Members
+
+Invitations
+
+Roles and capabilities
+
+RBAC
+
+Leadership priority
+
+Session leadership
+
+Team chat
 
 Agent permissions
-
-Terminal control permissions
 ```
+
+Authorization is checked when a client joins a realtime room, not for every document update.
 
 ---
 
@@ -1296,11 +1309,17 @@ Patch validation
 
 Patch application
 
+Approval workflows
+
+Approval quorum
+
 Build definitions
 
 Test definitions
 
 Command policies
+
+Terminal control permissions
 
 Terminal-session metadata
 
@@ -1328,7 +1347,7 @@ Alice
 Local Yjs
  │
  ▼
-Collaboration Service
+Realtime Collaboration Service
  │
  ▼
 Local Yjs
@@ -1370,6 +1389,8 @@ Development may use one PostgreSQL server with isolated service databases or sch
 PostgreSQL
 
 ├── collaboration_db
+│
+├── identity_db
 │
 ├── agent_db
 │
@@ -1414,6 +1435,10 @@ proto/
 ├── collaboration/
 │   └── v1/
 │       └── collaboration.proto
+│
+├── identity/
+│   └── v1/
+│       └── identity.proto
 │
 ├── agent/
 │   └── v1/
@@ -1505,22 +1530,30 @@ conflux/
 │   │   │   └── server/
 │   │   │
 │   │   ├── internal/
-│   │   │   ├── auth/
-│   │   │   ├── teams/
-│   │   │   ├── members/
-│   │   │   ├── roles/
-│   │   │   ├── permissions/
-│   │   │   ├── leadership/
 │   │   │   ├── presence/
-│   │   │   ├── chat/
 │   │   │   ├── realtime/
 │   │   │   ├── documents/
-│   │   │   ├── approvals/
-│   │   │   ├── terminal/
 │   │   │   └── grpc/
 │   │   │
 │   │   ├── migrations/
 │   │   ├── go.mod
+│   │   └── Dockerfile
+│   │
+│   ├── identity/
+│   │   ├── src/
+│   │   │   ├── main/
+│   │   │   │   ├── java/
+│   │   │   │   │   └── conflux/
+│   │   │   │   │       ├── auth/
+│   │   │   │   │       ├── teams/
+│   │   │   │   │       ├── members/
+│   │   │   │   │       ├── roles/
+│   │   │   │   │       ├── leadership/
+│   │   │   │   │       ├── chat/
+│   │   │   │   │       └── grpc/
+│   │   │   │   └── resources/
+│   │   │   └── test/
+│   │   ├── pom.xml
 │   │   └── Dockerfile
 │   │
 │   ├── agent/
@@ -1575,6 +1608,10 @@ conflux/
 │   │   └── v1/
 │   │       └── collaboration.proto
 │   │
+│   ├── identity/
+│   │   └── v1/
+│   │       └── identity.proto
+│   │
 │   ├── agent/
 │   │   └── v1/
 │   │       └── agent.proto
@@ -1613,6 +1650,7 @@ conflux/
 │   └── workflows/
 │       ├── desktop.yml
 │       ├── collaboration.yml
+│       ├── identity.yml
 │       ├── agent.yml
 │       ├── workspace.yml
 │       └── proto.yml
@@ -1643,9 +1681,10 @@ conflux/
 | Components              | shadcn/ui                    |
 | UI state                | Zustand                      |
 | API state               | TanStack Query               |
-| Collaboration backend   | Go                           |
+| Realtime collaboration  | Go                           |
 | Agent backend           | Go                           |
-| Workspace backend       | Java                         |
+| Identity and team       | Java / Spring Boot           |
+| Workspace backend       | Java / Spring Boot           |
 | Java framework          | Spring Boot                  |
 | Internal RPC            | gRPC                         |
 | Contracts               | Protocol Buffers             |
