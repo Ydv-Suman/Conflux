@@ -35,9 +35,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_NAME: identityDB
+      DB_URL: jdbc:postgresql://localhost:5432/identityDB
       DB_USERNAME: postgres
       DB_PASSWORD: identity123
     steps:
