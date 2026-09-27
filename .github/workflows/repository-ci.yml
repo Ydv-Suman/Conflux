@@ -1,0 +1,24 @@
+name: Repository CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: repository-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check whitespace errors
+        run: git diff --check HEAD^ HEAD || git diff --check $(git hash-object -t tree /dev/null) HEAD
