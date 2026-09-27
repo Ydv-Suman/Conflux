@@ -35,9 +35,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DB_URL: jdbc:postgresql://localhost:5432/identityDB
-      DB_USERNAME: postgres
-      DB_PASSWORD: identity123
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/identityDB
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: identity123
     steps:
       - uses: actions/checkout@v7
 
