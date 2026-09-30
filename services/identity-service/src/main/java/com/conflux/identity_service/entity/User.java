@@ -51,6 +51,9 @@ public class User {
     @Column(name = "email", nullable = false, unique = true)
     private String email;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
     @Size(max = 255)
     @NotNull
     @Column(name = "password", nullable = false)
