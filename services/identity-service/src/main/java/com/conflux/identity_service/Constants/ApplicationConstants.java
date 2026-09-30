@@ -10,6 +10,8 @@ public final class ApplicationConstants {
     public static final String MESSAGE_200 = "Request processed successfully";
     public static final String STATUS_201 = "201";
     public static final String MESSAGE_201 = "User created successfully";
+    public static final String STATUS_202 = "202";
+    public static final String MESSAGE_202 = "Registration request received";
 
     public static final String STATUS_204 = "204";
     public static final String MESSAGE_204_UPDATE = "User updated successfully";

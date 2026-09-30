@@ -1,11 +1,12 @@
 package com.conflux.identity_service.security;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -13,17 +14,20 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
 public class ServiceSecurityConfig {
 
     private final List<String> publicPaths;
+
+    public ServiceSecurityConfig(@Qualifier("publicPaths") List<String> publicPaths) {
+        this.publicPaths = publicPaths;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
+                        .requestMatchers(HttpMethod.POST, publicPaths.toArray(String[]::new)).permitAll()
                         .anyRequest().authenticated())
                 .build();
     }
@@ -31,6 +35,6 @@ public class ServiceSecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
     }
 }

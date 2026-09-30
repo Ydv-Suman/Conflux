@@ -3,14 +3,16 @@ package com.conflux.identity_service.service.impl;
 import com.conflux.identity_service.Constants.ApplicationConstants;
 import com.conflux.identity_service.dto.RegisterUserRequestDto;
 import com.conflux.identity_service.entity.User;
-import com.conflux.identity_service.exception.EmailAlreadyExistsException;
 import com.conflux.identity_service.exception.PasswordMismatchException;
-import com.conflux.identity_service.exception.UsernameAlreadyExistsException;
 import com.conflux.identity_service.repository.UserRepository;
 import com.conflux.identity_service.service.IUserService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
+import java.text.Normalizer;
+import java.sql.SQLException;
+import java.util.Locale;
 
 @Service
 public class UserServiceImpl implements IUserService {
@@ -28,21 +30,25 @@ public class UserServiceImpl implements IUserService {
 
 
     @Override
-    @Transactional
     public void registerUser(RegisterUserRequestDto registerRequestDto) {
         validatePasswordConfirmation(registerRequestDto.password(), registerRequestDto.confirmPassword());
-        validateUniqueUser(registerRequestDto.username(), registerRequestDto.email());
 
         User user = new User();
         user.setFirstName(registerRequestDto.firstName());
         user.setMiddleName(registerRequestDto.middleName());
         user.setLastName(registerRequestDto.lastName());
-        user.setUsername(registerRequestDto.username());
-        user.setEmail(registerRequestDto.email());
+        user.setUsername(normalize(registerRequestDto.username()));
+        user.setEmail(normalize(registerRequestDto.email()));
         user.setPassword(passwordEncoder.encode(registerRequestDto.password()));
 
-        userRepository.save(user);
-
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException failure) {
+            if (!isUniqueViolation(failure)) {
+                throw failure;
+            }
+            // The response intentionally does not reveal whether the account exists.
+        }
     }
 
     private void validatePasswordConfirmation(String password, String confirmPassword) {
@@ -51,15 +57,17 @@ public class UserServiceImpl implements IUserService {
         }
     }
 
-    private void validateUniqueUser(String username, String email) {
-        if (userRepository.existsByUsername(username)) {
-            throw new UsernameAlreadyExistsException(ApplicationConstants.USERNAME_TAKEN);
+    private String normalize(String value) {
+        return Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isUniqueViolation(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException
+                    && "23505".equals(sqlException.getSQLState())) {
+                return true;
+            }
         }
-
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(ApplicationConstants.EMAIL_REGISTERED);
-        }
-
-
+        return false;
     }
 }
