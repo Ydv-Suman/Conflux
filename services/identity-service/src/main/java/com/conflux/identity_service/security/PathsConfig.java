@@ -8,8 +8,8 @@ import java.util.List;
 @Configuration
 public class PathsConfig {
 
-    @Bean(name="publicPaths")
-    public List<String> publicpaths(){
+    @Bean(name = "publicPaths")
+    public List<String> publicPaths() {
         return List.of("/api/users");
     }
 

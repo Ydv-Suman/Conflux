@@ -31,7 +31,7 @@ public record RegisterUserRequestDto (
     @NotBlank(message = "Email is required")
     String email,
 
-    @Size(min = 8, max = 200, message = "Password must be between 8 and 200 characters")
+    @Size(min = 8, max = 20, message = "Password must be between 8 and 20 characters")
     @NotBlank(message = "Password is required")
     @Pattern(
             regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).+$",

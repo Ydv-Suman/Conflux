@@ -27,8 +27,8 @@ public class UserController {
             @Valid @RequestBody RegisterUserRequestDto registerRequestDto) {
         userService.registerUser(registerRequestDto);
         return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(new ApiResponseDto<>(ApplicationConstants.STATUS_201, ApplicationConstants.MESSAGE_201, null));
+                .status(HttpStatus.ACCEPTED)
+                .body(new ApiResponseDto<>(ApplicationConstants.STATUS_202, ApplicationConstants.MESSAGE_202, null));
     }
 
 }
