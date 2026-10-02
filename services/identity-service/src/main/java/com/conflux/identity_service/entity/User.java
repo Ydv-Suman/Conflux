@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -46,18 +48,11 @@ public class User {
     @Column(name = "username", nullable = false, unique = true)
     private String username;
 
-    @Size(max = 100)
-    @NotNull
-    @Column(name = "email", nullable = false, unique = true)
-    private String email;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, optional = false)
+    private UserEmail primaryEmail;
 
-    @Column(name = "email_verified", nullable = false)
-    private boolean emailVerified;
-
-    @Size(max = 255)
-    @NotNull
-    @Column(name = "password", nullable = false)
-    private String password;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, optional = false)
+    private LocalCredential localCredential;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -75,5 +70,15 @@ public class User {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public void setPrimaryEmail(UserEmail primaryEmail) {
+        this.primaryEmail = primaryEmail;
+        primaryEmail.setUser(this);
+    }
+
+    public void setLocalCredential(LocalCredential localCredential) {
+        this.localCredential = localCredential;
+        localCredential.setUser(this);
     }
 }

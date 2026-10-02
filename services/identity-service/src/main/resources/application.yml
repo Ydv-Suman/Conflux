@@ -15,3 +15,16 @@ spring:
     driver-class-name: org.postgresql.Driver
   flyway:
     baseline-on-migrate: true
+  mail:
+    host: ${MAIL_HOST:smtp-relay.brevo.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+app:
+  mail-from: ${MAIL_FROM:no-reply@conflux.local}
+  base-url: ${APP_BASE_URL:http://localhost:3000}
+  email-verification-ttl: ${EMAIL_VERIFICATION_TTL:24h}

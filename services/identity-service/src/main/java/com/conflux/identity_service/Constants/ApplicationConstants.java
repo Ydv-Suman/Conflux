@@ -22,6 +22,4 @@ public final class ApplicationConstants {
     public static final String MESSAGE_417_DELETE = "Delete operation failed. Please try again or contact Dev team";
 
     public static final String PASSWORD_MISMATCH = "Password and confirm password do not match";
-    public static final String USERNAME_TAKEN = "Username is already taken";
-    public static final String EMAIL_REGISTERED = "Email is already registered";
 }

@@ -12,7 +12,8 @@ public class UserMapper {
         userDto.setFirstName(user.getFirstName());
         userDto.setMiddleName(user.getMiddleName());
         userDto.setLastName(user.getLastName());
-        userDto.setEmail(user.getEmail());
+        userDto.setEmail(user.getPrimaryEmail().getEmail());
+        userDto.setEmailVerified(user.getPrimaryEmail().getVerifiedAt() != null);
         userDto.setUsername(user.getUsername());
         userDto.setCreatedAt(user.getCreatedAt());
         return userDto;
