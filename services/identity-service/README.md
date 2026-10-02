@@ -38,12 +38,21 @@ docker logs conflux_identity
 Create `services/identity-service/.env`:
 
 ```properties
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=identityDB
+DB_URL=jdbc:postgresql://localhost:5432/identityDB
 DB_USERNAME=postgres
 DB_PASSWORD=identity123
+
+MAIL_HOST=smtp-relay.brevo.com
+MAIL_PORT=587
+MAIL_USERNAME=your-brevo-smtp-login
+MAIL_PASSWORD=your-brevo-smtp-key
+MAIL_FROM=no-reply@your-verified-domain.com
+APP_BASE_URL=http://localhost:3000
+EMAIL_VERIFICATION_TTL=24h
 ```
+
+Use the SMTP login and SMTP key from Brevo, not the Brevo account password or API key.
+The sender address or domain must be verified in Brevo.
 
 The file is ignored by Git. `application.yml` loads it when the app starts from either the repository root or the service directory.
 

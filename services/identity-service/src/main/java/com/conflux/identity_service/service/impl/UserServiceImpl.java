@@ -2,34 +2,43 @@ package com.conflux.identity_service.service.impl;
 
 import com.conflux.identity_service.Constants.ApplicationConstants;
 import com.conflux.identity_service.dto.RegisterUserRequestDto;
+import com.conflux.identity_service.entity.LocalCredential;
 import com.conflux.identity_service.entity.User;
+import com.conflux.identity_service.entity.UserEmail;
 import com.conflux.identity_service.exception.PasswordMismatchException;
 import com.conflux.identity_service.repository.UserRepository;
 import com.conflux.identity_service.service.IUserService;
+import com.conflux.identity_service.service.EmailVerificationService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.text.Normalizer;
 import java.sql.SQLException;
-import java.util.Locale;
 
 @Service
 public class UserServiceImpl implements IUserService {
 
+    private static final String USERNAME_UNIQUE_INDEX = "users_username_lower_uq";
+    private static final String EMAIL_UNIQUE_INDEX = "user_emails_email_lower_uq";
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
 
 
     public UserServiceImpl(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            EmailVerificationService emailVerificationService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailVerificationService = emailVerificationService;
     }
 
 
     @Override
+    @Transactional
     public void registerUser(RegisterUserRequestDto registerRequestDto) {
         validatePasswordConfirmation(registerRequestDto.password(), registerRequestDto.confirmPassword());
 
@@ -37,18 +46,35 @@ public class UserServiceImpl implements IUserService {
         user.setFirstName(registerRequestDto.firstName());
         user.setMiddleName(registerRequestDto.middleName());
         user.setLastName(registerRequestDto.lastName());
-        user.setUsername(normalize(registerRequestDto.username()));
-        user.setEmail(normalize(registerRequestDto.email()));
-        user.setPassword(passwordEncoder.encode(registerRequestDto.password()));
+        user.setUsername(registerRequestDto.username());
+        UserEmail email = new UserEmail();
+        email.setEmail(registerRequestDto.email());
+        user.setPrimaryEmail(email);
+
+        LocalCredential credential = new LocalCredential();
+        credential.setPasswordHash(passwordEncoder.encode(registerRequestDto.password()));
+        user.setLocalCredential(credential);
 
         try {
             userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException failure) {
-            if (!isUniqueViolation(failure)) {
+            if (!isIdentityUniqueViolation(failure)) {
                 throw failure;
             }
             // The response intentionally does not reveal whether the account exists.
+            return;
         }
+        emailVerificationService.issue(email);
+    }
+
+    @Override
+    public void verifyEmail(String token) {
+        emailVerificationService.verify(token);
+    }
+
+    @Override
+    public void resendVerification(String email) {
+        emailVerificationService.resend(email);
     }
 
     private void validatePasswordConfirmation(String password, String confirmPassword) {
@@ -57,15 +83,17 @@ public class UserServiceImpl implements IUserService {
         }
     }
 
-    private String normalize(String value) {
-        return Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
-    }
-
-    private boolean isUniqueViolation(Throwable failure) {
+    private boolean isIdentityUniqueViolation(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof SQLException sqlException
                     && "23505".equals(sqlException.getSQLState())) {
-                return true;
+                for (Throwable detail = failure; detail != null; detail = detail.getCause()) {
+                    String message = detail.getMessage();
+                    if (message != null && (message.contains(USERNAME_UNIQUE_INDEX)
+                            || message.contains(EMAIL_UNIQUE_INDEX))) {
+                        return true;
+                    }
+                }
             }
         }
         return false;

@@ -12,6 +12,8 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.List;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 @EnableWebSecurity
 public class ServiceSecurityConfig {
@@ -25,6 +27,7 @@ public class ServiceSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
+                .cors(withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, publicPaths.toArray(String[]::new)).permitAll()

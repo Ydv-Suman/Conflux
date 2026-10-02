@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.text.Normalizer;
+import java.util.Locale;
+
 public record RegisterUserRequestDto (
 
     @Size(max=50, message = "First name must be less than 50 characters")
@@ -31,17 +34,36 @@ public record RegisterUserRequestDto (
     @NotBlank(message = "Email is required")
     String email,
 
-    @Size(min = 8, max = 20, message = "Password must be between 8 and 20 characters")
+    @Size(min = 12, max = 128, message = "Password must be between 12 and 128 characters")
     @NotBlank(message = "Password is required")
-    @Pattern(
-            regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?]).+$",
-            message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
-    )
     String password,
 
+    @Size(min = 12, max = 128, message = "Confirm password must be between 12 and 128 characters")
     @NotBlank(message = "Confirm password is required")
     String confirmPassword
 
 ) {
+
+    public RegisterUserRequestDto {
+        firstName = trim(firstName);
+        middleName = blankToNull(middleName);
+        lastName = trim(lastName);
+        username = normalizeIdentity(username);
+        email = normalizeIdentity(email);
+    }
+
+    private static String trim(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private static String blankToNull(String value) {
+        String trimmed = trim(value);
+        return trimmed == null || trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String normalizeIdentity(String value) {
+        return value == null ? null
+                : Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+    }
 
 }
