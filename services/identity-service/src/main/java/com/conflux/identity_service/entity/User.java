@@ -45,7 +45,7 @@ public class User {
 
     @Size(min = 5, max = 50)
     @NotNull
-    @Column(name = "username", nullable = false, unique = true)
+    @Column(name = "username", nullable = false)
     private String username;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, optional = false)

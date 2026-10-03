@@ -66,7 +66,7 @@ public class EmailVerificationService {
         }
         token.setConsumedAt(now);
         token.getUserEmail().setVerifiedAt(now);
-        token.getUserEmail().setVerificationSource("LOCAL");
+        token.getUserEmail().setVerificationSource("EMAIL");
     }
 
     @Transactional
