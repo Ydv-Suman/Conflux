@@ -3,48 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Create and verify your Conflux account." />
     <title>Conflux</title>
   </head>
-  <body class="m-0 min-w-[620px] bg-[#e8e6df] bg-[radial-gradient(circle_at_8%_5%,rgba(255,255,255,.8),transparent_30%)] font-sans text-[#20231f] antialiased">
-    <main class="grid min-h-dvh grid-rows-[auto_1fr_auto] p-[18px]">
-      <header class="mx-auto flex w-full max-w-[1180px] items-center justify-between px-0.5 pb-6 pt-2">
-        <div class="flex items-center gap-[11px]">
-          <span class="grid size-[38px] place-items-center rounded-[11px] bg-[#20231f] font-bold tracking-[-0.04em] text-[#f7f7f3]" aria-hidden="true">C</span>
-          <div class="grid gap-px">
-            <strong class="text-[15px] tracking-[-0.02em]">Conflux</strong>
-            <span class="text-xs text-[#71756d]">Shared document</span>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <div class="flex min-w-[98px] items-center gap-2 text-xs text-[#555a52] max-[700px]:hidden" id="status" data-state="loading" role="status">
-            <span id="status-dot" class="size-[7px] animate-pulse rounded-full bg-[#b58b51]" aria-hidden="true"></span>
-            <span>Connecting</span>
-          </div>
-          <button class="flex min-h-[38px] cursor-pointer items-center gap-2 rounded-[10px] border border-[#cac8c0] bg-[rgba(250,249,245,.72)] px-3.5 text-xs font-semibold text-[#292c28] shadow-[inset_0_1px_rgba(255,255,255,.9)] transition-[transform,border-color] duration-200 hover:border-[#92968d] active:translate-y-px active:scale-[.98] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[rgba(61,111,86,.24)]" id="open-window" type="button" aria-label="Open a second editor window">
-            <svg class="size-[15px] fill-none stroke-current stroke-[1.8] [stroke-linecap:round] [stroke-linejoin:round]" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h11v11H8zM5 16H4V4h12v1" /></svg>
-            Open second window
-          </button>
-        </div>
-      </header>
-
-      <section class="mx-auto grid w-full max-w-[1180px] grid-rows-[auto_auto_minmax(280px,1fr)] self-stretch rounded-[22px] border border-[rgba(179,177,167,.8)] bg-[#f8f7f2] p-[clamp(24px,5vw,54px)] shadow-[0_24px_70px_-42px_rgba(50,50,43,.4)] max-[700px]:rounded-2xl max-[700px]:p-6" aria-labelledby="document-title">
-        <div class="grid grid-cols-[1.4fr_.6fr] items-end gap-10 border-b border-[#deddd7] pb-8 max-[700px]:grid-cols-1 max-[700px]:gap-3">
-          <div>
-            <p class="mb-[7px] mt-0 font-mono text-[10px] font-bold uppercase tracking-[.12em] text-[#4c8067]">Document 01</p>
-            <h1 class="m-0 text-[clamp(26px,4vw,42px)] font-semibold leading-none tracking-[-.045em]" id="document-title">Shared scratchpad</h1>
-          </div>
-          <p class="m-0 max-w-[30ch] justify-self-end text-xs leading-[1.55] text-[#71756d] max-[700px]:justify-self-start">Changes are synchronized across every open Conflux window.</p>
-        </div>
-
-        <label class="pb-2.5 pt-6 text-[11px] font-bold uppercase tracking-[.06em] text-[#71756d]" for="editor">Document content</label>
-        <textarea class="h-full w-full resize-none border-0 bg-transparent font-mono text-[15px] leading-7 text-[#20231f] outline-none placeholder:text-[#aaa9a2] disabled:cursor-wait disabled:opacity-50" id="editor" disabled spellcheck="false" placeholder="Start typing in either window..."></textarea>
-      </section>
-
-      <footer class="mx-auto flex w-full max-w-[1180px] justify-between px-0.5 pt-4 text-xs text-[#71756d]">
-        <span>Local-first collaboration prototype</span><span>Stored on this device</span>
-      </footer>
-    </main>
-    <script type="module" src="/src/renderer.ts"></script>
-  </body>
+  <body><main id="app"></main><script type="module" src="/src/renderer.ts"></script></body>
 </html>

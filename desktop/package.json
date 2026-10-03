@@ -8,8 +8,7 @@
     "start": "tauri dev",
     "build": "tsc --noEmit && vite build",
     "package": "tauri build --no-bundle",
-    "lint": "eslint --ext .ts,.tsx .",
-    "test": "node --test"
+    "lint": "eslint --ext .ts ."
   },
   "keywords": [],
   "author": {
@@ -27,9 +26,5 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "vite": "^5.4.21"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "~2.11.0",
-    "yjs": "^13.6.33"
   }
 }
