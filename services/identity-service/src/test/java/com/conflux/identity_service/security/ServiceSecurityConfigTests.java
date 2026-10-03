@@ -14,6 +14,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import static com.conflux.identity_service.security.PathConfig.USERS_API;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.containsString;
 
 @WebMvcTest(UserController.class)
 @Import({ServiceSecurityConfig.class, PathConfig.class, WebConfig.class,
@@ -33,6 +36,19 @@ class ServiceSecurityConfigTests {
                                  "confirmPassword":"LongPassword1!"}
                                 """))
                 .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void invalidRegistrationReturnsBadRequestWithoutEchoingPassword() throws Exception {
+        mvc.perform(post(USERS_API)
+                        .contentType("application/json")
+                        .content("""
+                                {"firstName":"First","lastName":"Last","username":"test.user",
+                                 "email":"user@example.com","password":"Short1!",
+                                 "confirmPassword":"Short1!"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(not(containsString("Short1!"))));
     }
 
     @TestConfiguration
