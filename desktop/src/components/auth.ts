@@ -39,7 +39,11 @@ export const brand = () => `
   </aside>
 `;
 
-export const passwordField = (name: string, autocomplete: string) => `
+export const passwordField = (
+  name: string,
+  autocomplete: string,
+  placeholder = '',
+) => `
   <span class="relative block">
     <input
       class="${inputClass} pr-12"
@@ -48,6 +52,7 @@ export const passwordField = (name: string, autocomplete: string) => `
       autocomplete="${autocomplete}"
       minlength="12"
       maxlength="128"
+      placeholder="${placeholder}"
       required
     >
     <button
