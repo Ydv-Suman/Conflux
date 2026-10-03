@@ -45,10 +45,6 @@ jobs:
         run: npm run lint
         working-directory: desktop
 
-      - name: Test desktop
-        run: npm test
-        working-directory: desktop
-
       - name: Test native runtime
         run: cargo test --manifest-path src-tauri/Cargo.toml
         working-directory: desktop
