@@ -19,6 +19,7 @@ app:
   email-verification-ttl: 24h
   auth:
     secure-cookies: false
+    cookie-same-site: Strict
   jwt:
     issuer: http://localhost:8080
     audience: conflux-api

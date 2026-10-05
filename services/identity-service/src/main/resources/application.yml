@@ -33,6 +33,7 @@ app:
   email-verification-ttl: ${EMAIL_VERIFICATION_TTL:24h}
   auth:
     secure-cookies: ${AUTH_SECURE_COOKIES:false}
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Strict}
   jwt:
     issuer: ${JWT_ISSUER:http://localhost:8080}
     audience: ${JWT_AUDIENCE:conflux-api}

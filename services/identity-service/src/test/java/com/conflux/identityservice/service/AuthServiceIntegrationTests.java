@@ -58,8 +58,8 @@ class AuthServiceIntegrationTests {
         assertThrows(InvalidCredentialsException.class,
                 () -> authService.refresh(login.refreshToken(), "127.0.0.1"));
 
-        Jwt refreshedAccess = jwtDecoder.decode(refreshed.access().value());
-        authService.logout(refreshedAccess);
+        jwtDecoder.decode(refreshed.access().value());
+        authService.logout(refreshed.refreshToken());
 
         assertThrows(JwtValidationException.class,
                 () -> jwtDecoder.decode(login.access().value()));

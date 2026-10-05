@@ -54,6 +54,17 @@ public class AuthSessionRepository {
                 """).param("sessionId", sessionId).update();
     }
 
+    public Optional<UUID> revokeByRefreshTokenHash(String tokenHash) {
+        return jdbc.sql("""
+                UPDATE auth_sessions SET revoked_at = CURRENT_TIMESTAMP
+                WHERE refresh_token_hash = :tokenHash AND revoked_at IS NULL
+                RETURNING user_id
+                """)
+                .param("tokenHash", tokenHash)
+                .query(UUID.class)
+                .optional();
+    }
+
     public boolean isActive(UUID sessionId) {
         return jdbc.sql("""
                 SELECT EXISTS(

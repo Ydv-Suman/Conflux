@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.conflux.identityservice.security.PathConfig.LOGOUT_API;
 import static com.conflux.identityservice.security.PathConfig.REFRESH_API;
 
 @Component
@@ -32,16 +33,17 @@ public class RefreshOriginFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
         String origin = request.getHeader(HttpHeaders.ORIGIN);
-        if (isCookieRefresh(request) && (origin == null || !allowedOrigins.contains(origin))) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Refresh request origin is not allowed");
+        if (isCookieAuthRequest(request) && (origin == null || !allowedOrigins.contains(origin))) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Authentication request origin is not allowed");
             return;
         }
         chain.doFilter(request, response);
     }
 
-    private boolean isCookieRefresh(HttpServletRequest request) {
+    private boolean isCookieAuthRequest(HttpServletRequest request) {
         return HttpMethod.POST.matches(request.getMethod())
-                && REFRESH_API.equals(request.getRequestURI())
+                && (REFRESH_API.equals(request.getRequestURI())
+                    || LOGOUT_API.equals(request.getRequestURI()))
                 && request.getCookies() != null
                 && Arrays.stream(request.getCookies()).anyMatch(cookie ->
                         REFRESH_COOKIE.equals(cookie.getName()) && !cookie.getValue().isBlank());

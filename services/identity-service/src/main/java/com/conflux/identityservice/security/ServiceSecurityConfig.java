@@ -10,11 +10,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.List;
 
 import static org.springframework.security.config.Customizer.withDefaults;
+import static com.conflux.identityservice.security.PathConfig.LOGOUT_API;
 
 @Configuration
 @EnableWebSecurity
@@ -28,6 +30,7 @@ public class ServiceSecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        DefaultBearerTokenResolver bearerTokens = new DefaultBearerTokenResolver();
         return http
                 .cors(withDefaults())
                 .csrf(csrf -> csrf.disable())
@@ -36,7 +39,10 @@ public class ServiceSecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.POST, publicPaths.toArray(String[]::new)).permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .bearerTokenResolver(request -> LOGOUT_API.equals(request.getRequestURI())
+                                ? null : bearerTokens.resolve(request))
+                        .jwt(withDefaults()))
                 .build();
     }
 

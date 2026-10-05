@@ -21,10 +21,13 @@ public class PathConfig {
     public static final String RESEND_VERIFICATION_API = USERS_API + RESEND_VERIFICATION;
     public static final String LOGIN_API = API_PREFIX + AUTH + LOGIN;
     public static final String REFRESH_API = API_PREFIX + AUTH + REFRESH;
+    public static final String LOGOUT_API = API_PREFIX + AUTH + LOGOUT;
 
     @Bean(name = "publicPaths")
     public List<String> publicPaths() {
-        return List.of(USERS_API, VERIFY_EMAIL_API, RESEND_VERIFICATION_API, LOGIN_API, REFRESH_API);
+        return List.of(
+                USERS_API, VERIFY_EMAIL_API, RESEND_VERIFICATION_API,
+                LOGIN_API, REFRESH_API, LOGOUT_API);
     }
 
 }

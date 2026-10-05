@@ -43,8 +43,33 @@ class RefreshOriginFilterTests {
         }
     }
 
+    @Test
+    void protectsCookieBasedLogoutWithTheSameOriginPolicy() throws Exception {
+        MockHttpServletRequest allowed = logoutRequest();
+        allowed.addHeader("Origin", "https://app.conflux.example");
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(allowed, new MockHttpServletResponse(), chain);
+
+        assertEquals(allowed, chain.getRequest());
+
+        MockHttpServletRequest rejected = logoutRequest();
+        rejected.addHeader("Origin", "https://evil.example");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(rejected, response, new MockFilterChain());
+
+        assertEquals(403, response.getStatus());
+    }
+
     private MockHttpServletRequest refreshRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", PathConfig.REFRESH_API);
+        request.setCookies(new Cookie("conflux_refresh", "opaque-refresh-token"));
+        return request;
+    }
+
+    private MockHttpServletRequest logoutRequest() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", PathConfig.LOGOUT_API);
         request.setCookies(new Cookie("conflux_refresh", "opaque-refresh-token"));
         return request;
     }
