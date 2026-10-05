@@ -25,8 +25,8 @@ export const loginView = () =>
 
     <form class="grid gap-4" id="login-form">
       <label class="${fieldClass}">
-        Email address
-        <input class="${inputClass}" name="email" type="email" autocomplete="email" maxlength="100" required>
+        Email address/Username
+        <input class="${inputClass}" name="usernameOrEmail" autocomplete="username" maxlength="100" required>
       </label>
       <label class="${fieldClass}">
         Password
@@ -42,6 +42,15 @@ export const loginView = () =>
         Log in <span aria-hidden="true">→</span>
       </button>
     </form>
+
+    <button
+      class="mt-4 block w-full cursor-pointer border-0 bg-transparent text-center text-xs
+        font-semibold text-[#4f554f] underline underline-offset-3"
+      id="forgot-password"
+      type="button"
+    >
+      Forgot password?
+    </button>
 
     <div
       class="my-6 flex items-center gap-4 text-[10px] font-bold text-[#858981]

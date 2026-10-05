@@ -5,6 +5,7 @@ import {
   primaryClass,
   secondaryClass,
 } from "../components/auth";
+import { escapeHtml } from '../html';
 
 type StatusOptions = {
   icon: "mail" | "check" | "error";
@@ -64,7 +65,7 @@ export const checkEmailAction = (email: string) => `
   <form id="resend-form" class="grid gap-4 text-left">
     <label class="${fieldClass}">
       Email
-      <input class="${inputClass}" name="email" type="email" autocomplete="email" value="${email}" required>
+      <input class="${inputClass}" name="email" type="email" autocomplete="email" value="${escapeHtml(email)}" required>
     </label>
     <button class="${secondaryClass}" type="submit" data-label="Resend email">Resend email</button>
     <a
@@ -72,7 +73,7 @@ export const checkEmailAction = (email: string) => `
       href="/"
       data-link
     >
-      Back to home
+      Continue to login
     </a>
   </form>
 `;
