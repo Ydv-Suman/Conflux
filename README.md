@@ -1,10 +1,10 @@
 # Conflux
 
-> A local-first multiplayer development environment where developers and specialized AI agents work together on the same synchronized codebase in real time.
+> A local-first multiplayer development environment where developers and task-scoped AI agents collaborate within isolated feature workstreams.
 
 Conflux is a collaborative desktop IDE designed for software teams working with AI.
 
-Instead of giving every developer an isolated AI coding assistant, Conflux creates a **shared development workspace** where team members and specialized AI agents collaborate on the same repository.
+Instead of giving every developer an isolated AI coding assistant, Conflux creates a shared project with collaborative **workstreams** where team members and specialized AI agents work on independent features without disrupting one another.
 
 Developers can edit code together in real time, see each other's cursors and changes, communicate through team chat, use a shared terminal, assign tasks to a shared AI engineering team, review AI-generated changes, and approve consequential actions before they enter the canonical workspace.
 
@@ -55,6 +55,37 @@ Conflux uses a different model:
 Humans and AI agents participate in the same logical development workspace.
 
 Conflux synchronizes collaboration and workspace state while Git remains the durable source-control system.
+
+---
+
+# Updated Workstream Model
+
+Conflux isolates parallel feature development while preserving team-wide visibility.
+
+```text
+Team -> Project -> Workstream -> Task -> Agent Runs
+```
+
+A workstream behaves like a collaborative feature branch. It owns a branch and base revision, active collaborative documents, participants, task and agent context, shared chat and terminal context, and a merge lifecycle.
+
+```text
+Project
+├── Authentication workstream -> live collaboration -> Git branch/worktree
+├── Payments workstream       -> live collaboration -> Git branch/worktree
+└── Notifications workstream  -> live collaboration -> Git branch/worktree
+```
+
+Realtime CRDT synchronization occurs between collaborators in the same workstream. Other team members retain visibility into its status without automatically receiving every unfinished edit in their active working tree.
+
+Suggested workstream states:
+
+```text
+CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
+                        |               |
+                        +-> BLOCKED     +-> CONFLICT
+```
+
+Each task creates independent Coder, Reviewer, and Security runs with workstream-specific context. An approved AI patch must be validated against the latest workstream revision before it is applied.
 
 ---
 
@@ -344,7 +375,7 @@ Alice chooses:
 Share Workspace with Team
 ```
 
-Other online members receive:
+Alice creates or selects a workstream for the feature she is developing. Other online members receive:
 
 ```text
 Alice opened:
@@ -353,8 +384,10 @@ payments-api
 
 main @ abc123
 
-[ Join Workspace ]
+[ Join Workstream ]
 ```
+
+Each active workstream maps to its own Git branch and may use a dedicated Git worktree so unfinished changes do not interfere with unrelated features.
 
 ---
 
@@ -398,7 +431,7 @@ If the repository has no external Git remote and no authorized member containing
 
 Conflux does not synchronize entire files after every keystroke.
 
-Active collaborative documents use a CRDT-based document model.
+Active collaborative documents within the same workstream use a CRDT-based document model.
 
 Reference implementation:
 
@@ -526,7 +559,7 @@ A development session may contain thousands of collaborative edits before the te
 
 # Shared AI Team
 
-Each workspace has shared logical AI roles.
+Each project has shared logical AI roles, instantiated as independent runs for each workstream task.
 
 Initial agents:
 
@@ -798,7 +831,7 @@ Only after the configured policy succeeds can the patch enter the canonical work
 
 # Shared Terminal
 
-Each collaborative workspace exposes one logical shared terminal.
+Each active workstream exposes one logical shared terminal rather than one terminal for the entire project.
 
 The terminal executes on exactly one designated machine.
 
@@ -1110,7 +1143,7 @@ RBAC + Policy Engine
 
 # Backend Architecture
 
-Conflux uses four backend services: two implemented in Go and two in Java.
+The updated target architecture uses three backend services. Identity and team capabilities are part of the Collaboration Service boundary; the current standalone identity service remains an implementation-stage foundation while the target boundaries evolve.
 
 ```text
                          CONFLUX DESKTOP
@@ -1119,17 +1152,18 @@ Conflux uses four backend services: two implemented in Go and two in Java.
                        REST / WebSocket
                               │
                               ▼
-        ┌─────────────────────┐   ┌─────────────────────┐
-        │ REALTIME            │   │    AGENT SERVICE    │
-        │ COLLABORATION       │   │         Go          │
-        │ Go                  │   └─────────────────────┘
-        └─────────────────────┘
-
-        ┌─────────────────────┐   ┌─────────────────────┐
-        │ IDENTITY AND TEAM   │   │  WORKSPACE SERVICE  │
-        │ Java / Spring Boot  │   │ Java / Spring Boot  │
-        └─────────────────────┘   └─────────────────────┘
-                       │ gRPC / Protocol Buffers │
+                    COLLABORATION SERVICE
+                              Go
+        Teams / RBAC / Presence / Chat / Workstreams
+        CRDT relay / Approvals / Leadership / Terminal
+                              │
+                             gRPC
+                   ┌──────────┴──────────┐
+                   ▼                     ▼
+            AGENT SERVICE        WORKSPACE SERVICE
+                 Go               Java / Spring Boot
+          orchestration and       Git, branches,
+          task agent runs         patches and tests
 ```
 
 Internal service communication uses:
@@ -1142,11 +1176,11 @@ Protocol Buffers
 
 ---
 
-# Realtime Collaboration Service
+# Collaboration Service
 
 **Language:** Go
 
-The Realtime Collaboration Service owns the latency-sensitive collaboration path.
+The Collaboration Service owns human collaboration and the latency-sensitive realtime path.
 
 Primary question:
 
@@ -1168,17 +1202,25 @@ Active document sessions
 Cursor synchronization
 
 Reconnect / resynchronization
+
+Teams, membership, RBAC, and capabilities
+
+Projects and workstreams
+
+Approvals and session leadership
+
+Workstream chat and terminal control
 ```
 
 ---
 
-# Identity and Team Service
+# Current Identity Service
 
 **Language:** Java
 
 **Framework:** Spring Boot
 
-The Identity and Team Service owns users, organizational membership, and durable access rules.
+The current Java identity service provides authentication and identity foundations. In the target three-service architecture, team, RBAC, leadership, and collaboration responsibilities belong to the Go Collaboration Service.
 
 Primary question:
 
@@ -1189,26 +1231,16 @@ Responsibilities:
 ```text
 Authentication
 
-Teams
+User registration and verified email identities
 
-Members
+Local and external identities
 
-Invitations
+JWT sessions, refresh rotation, logout, and revocation
 
-Roles and capabilities
-
-RBAC
-
-Leadership priority
-
-Session leadership
-
-Team chat
-
-Agent permissions
+Authentication rate limiting and security cleanup
 ```
 
-Authorization is checked when a client joins a realtime room, not for every document update.
+The Collaboration Service consumes the authenticated identity and applies team/workstream authorization when a client joins a realtime room.
 
 ---
 
@@ -1725,9 +1757,11 @@ Alice opens:
 payments-api
 ```
 
-Bob and Charlie join the workspace.
+Alice selects the Authentication workstream, backed by its own branch/worktree.
 
-All three now have synchronized local workspace replicas.
+Bob joins the Authentication workstream while Charlie continues in the independent Payments workstream.
+
+Alice and Bob synchronize active Authentication documents without receiving Charlie's unfinished Payments edits.
 
 Bob asks:
 
@@ -1741,11 +1775,11 @@ Conflux creates:
 Task #392
 ```
 
-Coder investigates the current shared workspace.
+Coder investigates the current Authentication workstream.
 
 Meanwhile Alice continues editing another file.
 
-Her changes propagate to Bob and Charlie and become visible to the agent through the current shared workspace state.
+Her changes propagate to Bob and become visible to the agent through the latest Authentication workstream state.
 
 Coder produces:
 
@@ -1783,7 +1817,7 @@ Bob         ✓
 
 The patch is validated against the latest workspace state.
 
-If no conflicting changes exist, it enters the canonical collaborative workspace.
+If no conflicting changes exist, it enters the current collaborative workstream.
 
 The CRDT synchronization layer propagates affected document changes.
 
@@ -1791,16 +1825,16 @@ The CRDT synchronization layer propagates affected document changes.
                     Approved Patch
                           │
                           ▼
-                 Canonical Workspace
+              Authentication Workstream
                           │
-             ┌────────────┼────────────┐
-             ▼            ▼            ▼
-           Alice         Bob        Charlie
+                  ┌───────┴───────┐
+                  ▼               ▼
+                Alice            Bob
 ```
 
-Every developer now sees the accepted code.
+Every participant in the Authentication workstream now sees the accepted code.
 
-A Git checkpoint can then capture the durable repository state.
+A Git checkpoint captures the durable workstream state, which can later enter review and merge into `main`.
 
 ---
 
@@ -1968,20 +2002,24 @@ Team chat
 
 ---
 
-## Milestone 3 - Workspace
+## Milestone 3 - Projects and Workstreams
 
 Implement:
 
 ```text
 Repository detection
 
-Workspace registration
+Project registration
+
+Workstreams mapped to Git branches/worktrees
+
+Workstream switching and isolation
 
 Git state
 
 Repository metadata
 
-Workspace versions
+Workstream versions
 
 Initial repository synchronization
 
@@ -2226,7 +2264,7 @@ Shared Communication
 Shared AI Engineering Team
 ```
 
-All operating inside one synchronized development workspace.
+All operating inside isolated collaborative workstreams with project-wide visibility.
 
 The goal is not simply:
 
