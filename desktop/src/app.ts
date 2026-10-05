@@ -1,17 +1,21 @@
-import { post } from './api';
-import { API_URL, LOGIN_PATH, OAUTH_PATH } from './config';
+import { ApiError, post } from './api';
+import { getCurrentUser, isAuthenticated, login, logout, restoreSession } from './auth';
+import { API_URL, OAUTH_PATH } from './config';
 import { loginView } from './views/login';
 import { registrationView } from './views/register';
 import { checkEmailAction, continueAction, retryAction, statusView } from './views/status';
+import { homeView, loadingView, logoutFailedView } from './views/home';
+import { escapeHtml } from './html';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('App root is missing');
 
-const clean = (value: string) => value.replace(/[&<>"']/g, '');
 const setRoute = (path: string) => {
   history.pushState({}, '', path);
   render();
 };
+
+let cooldownTimer: number | undefined;
 
 const showMessage = (message: string, type: 'error' | 'success' = 'error') => {
   const output = document.querySelector<HTMLOutputElement>('#form-message');
@@ -31,6 +35,25 @@ const setSubmitting = (form: HTMLFormElement, active: boolean) => {
   if (!button) return;
   button.disabled = active;
   button.textContent = active ? 'Please wait…' : button.dataset.label || 'Submit';
+};
+
+const startCooldown = (form: HTMLFormElement, seconds: number) => {
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (!button) return;
+  window.clearInterval(cooldownTimer);
+  let remaining = Math.max(1, Math.ceil(seconds));
+  button.disabled = true;
+  const update = () => {
+    button.textContent = `Try again in ${remaining}s`;
+    remaining -= 1;
+    if (remaining < 0) {
+      window.clearInterval(cooldownTimer);
+      button.disabled = false;
+      button.textContent = button.dataset.label || 'Submit';
+    }
+  };
+  update();
+  cooldownTimer = window.setInterval(update, 1000);
 };
 
 const bindLinks = () => {
@@ -85,14 +108,29 @@ const bindLogin = () => {
   const form = document.querySelector<HTMLFormElement>('#login-form');
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    let rateLimited = false;
     setSubmitting(form, true);
 
     try {
-      await post(LOGIN_PATH, Object.fromEntries(new FormData(form)));
+      const data = new FormData(form);
+      await login(String(data.get('usernameOrEmail')), String(data.get('password')));
+      setRoute('/app');
     } catch (error) {
-      showMessage(error instanceof Error ? error.message : 'Unable to log in.');
+      const password = form.querySelector<HTMLInputElement>('[name="password"]');
+      if (password) password.value = '';
+      if (error instanceof ApiError && error.status === 429) {
+        rateLimited = true;
+        showMessage('Too many login attempts. Please wait before trying again.');
+        startCooldown(form, error.retryAfter ?? 60);
+        return;
+      }
+      showMessage(
+        error instanceof ApiError && error.status === 401
+          ? 'Incorrect username/email or password.'
+          : error instanceof Error ? error.message : 'Unable to log in.',
+      );
     } finally {
-      setSubmitting(form, false);
+      if (!rateLimited) setSubmitting(form, false);
     }
   });
 
@@ -100,6 +138,44 @@ const bindLogin = () => {
     button.addEventListener('click', () => {
       location.assign(`${API_URL}${OAUTH_PATH}/${button.dataset.provider}`);
     });
+  });
+
+  document.querySelector<HTMLButtonElement>('#forgot-password')?.addEventListener('click', () => {
+    showMessage('Password recovery is not available yet. Contact support if you cannot sign in.');
+  });
+};
+
+const bindLogout = () => {
+  document.querySelectorAll<HTMLButtonElement>('#logout-button, #logout-button-secondary')
+    .forEach((button) => button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.textContent = 'Logging out…';
+      try {
+        await logout();
+        setRoute('/');
+      } catch {
+        app.innerHTML = logoutFailedView;
+        bindLogoutFailure();
+      }
+    }));
+};
+
+const bindLogoutFailure = () => {
+  document.querySelector<HTMLButtonElement>('#retry-logout')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = 'Retrying…';
+    try {
+      await logout();
+      setRoute('/');
+    } catch {
+      button.disabled = false;
+      button.textContent = 'Retry logout';
+      showMessage('The server is still unavailable. Your server session may remain active.');
+    }
+  });
+  document.querySelector<HTMLButtonElement>('#close-app')?.addEventListener('click', () => {
+    window.close();
   });
 };
 
@@ -113,7 +189,7 @@ const bindResend = () => {
       await post('/api/users/resend-verification', {
         email: new FormData(form).get('email'),
       });
-      showMessage('A new verification link has been sent.', 'success');
+      showMessage('If the account is eligible, verification instructions will be sent.', 'success');
     } catch (error) {
       showMessage(
         error instanceof Error ? error.message : 'Unable to resend the email.',
@@ -138,7 +214,7 @@ const verifyEmail = async (token: string) => {
       icon: 'error',
       title: 'Link unavailable',
       body: error instanceof Error
-        ? clean(error.message)
+        ? escapeHtml(error.message)
         : 'This verification link is invalid or has expired.',
       action: retryAction,
     });
@@ -156,20 +232,36 @@ const render = () => {
     });
     void verifyEmail(searchParams.get('token') || '');
   } else if (pathname === '/check-email') {
-    const email = clean(sessionStorage.getItem('verificationEmail') || '');
+    const email = sessionStorage.getItem('verificationEmail') || '';
     app.innerHTML = statusView({
       icon: 'mail',
       title: 'Check your inbox',
       body: email
-        ? `We sent a verification link to <strong>${email}</strong>.`
-        : 'Enter your email to request a new verification link.',
+        ? `If registration can be completed for <strong>${escapeHtml(email)}</strong>, verification instructions will arrive shortly. If you already have an account, sign in instead.`
+        : 'If the account is eligible, verification instructions will be sent.',
       action: checkEmailAction(email),
     });
     bindResend();
   } else if (pathname === '/sign-up') {
+    if (isAuthenticated()) {
+      setRoute('/app');
+      return;
+    }
     app.innerHTML = registrationView();
     bindRegistration();
+  } else if (pathname === '/app') {
+    const user = getCurrentUser();
+    if (!user) {
+      setRoute('/');
+      return;
+    }
+    app.innerHTML = homeView(user);
+    bindLogout();
   } else {
+    if (isAuthenticated()) {
+      setRoute('/app');
+      return;
+    }
     app.innerHTML = loginView();
     bindLogin();
   }
@@ -180,5 +272,6 @@ const render = () => {
 
 export const startApp = () => {
   window.addEventListener('popstate', render);
-  render();
+  app.innerHTML = loadingView;
+  void restoreSession().finally(render);
 };
