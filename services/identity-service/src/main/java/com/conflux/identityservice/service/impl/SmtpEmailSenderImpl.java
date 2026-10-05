@@ -1,17 +1,18 @@
-package com.conflux.identityservice.service;
+package com.conflux.identityservice.service.impl;
 
+import com.conflux.identityservice.service.IEmailSender;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
-public class SmtpEmailSender implements EmailSender {
+public class SmtpEmailSenderImpl implements IEmailSender {
 
     private final JavaMailSender mailSender;
     private final String from;
 
-    public SmtpEmailSender(JavaMailSender mailSender, @Value("${app.mail-from}") String from) {
+    public SmtpEmailSenderImpl(JavaMailSender mailSender, @Value("${app.mail-from}") String from) {
         this.mailSender = mailSender;
         this.from = from;
     }

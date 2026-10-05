@@ -66,6 +66,7 @@ JWT_REFRESH_TTL=30d
 JWT_PUBLIC_KEY=file:./secrets/jwt-public.pem
 JWT_PRIVATE_KEY=file:./secrets/jwt-private.pem
 AUTH_SECURE_COOKIES=false
+AUTH_COOKIE_SAME_SITE=Strict
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 FORWARD_HEADERS_STRATEGY=none
 ```
@@ -86,6 +87,7 @@ chmod 644 secrets/jwt-public.pem
 ```
 
 Set `AUTH_SECURE_COOKIES=true` when the frontend uses HTTPS.
+Keep `AUTH_COOKIE_SAME_SITE=Strict` for same-site clients. For a packaged desktop client calling a different HTTPS site, use `AUTH_COOKIE_SAME_SITE=None`; startup rejects that setting unless `AUTH_SECURE_COOKIES=true`.
 
 `CORS_ALLOWED_ORIGINS` is a comma-separated allowlist. Use exact HTTPS origins in production; wildcard origins are rejected at startup. When the service runs directly, keep `FORWARD_HEADERS_STRATEGY=none`. Behind a trusted AWS ALB/reverse proxy, set `FORWARD_HEADERS_STRATEGY=native` so rate limiting uses the forwarded client address. Do not enable forwarded-header trust when clients can connect directly to the service and spoof proxy headers.
 
@@ -131,6 +133,7 @@ Configure the production container with:
 JWT_PRIVATE_KEY=file:/run/secrets/conflux/jwt-private.pem
 JWT_PUBLIC_KEY=file:/run/secrets/conflux/jwt-public.pem
 AUTH_SECURE_COOKIES=true
+AUTH_COOKIE_SAME_SITE=None
 CORS_ALLOWED_ORIGINS=https://app.conflux.example
 FORWARD_HEADERS_STRATEGY=native
 ```
@@ -236,7 +239,7 @@ AWS references: [EKS Secrets Manager integration](https://docs.aws.amazon.com/ek
 
 - `POST /api/auth/login` accepts `usernameOrEmail` and `password`, returns a 15-minute bearer token, and sets a rotating refresh-token cookie.
 - `POST /api/auth/refresh` rotates the refresh cookie and returns a new bearer token.
-- `POST /api/auth/logout` requires the bearer token, revokes the full login session, and clears the refresh cookie.
+- `POST /api/auth/logout` uses the refresh cookie, revokes the full login session, and clears the cookie even when the access token has expired.
 
 Only email-verified users can log in. Expired revocations, sessions, verification tokens, and rate-limit events are removed hourly.
 Five failed logins within five minutes trigger a fixed 60-second account cooldown; blocked retries do not extend it, and a successful login clears prior account failures. An IP may make 30 login attempts within five minutes.

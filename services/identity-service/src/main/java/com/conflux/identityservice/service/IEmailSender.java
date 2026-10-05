@@ -1,6 +1,6 @@
 package com.conflux.identityservice.service;
 
-public interface EmailSender {
+public interface IEmailSender {
 
     void sendVerificationEmail(String recipient, String verificationUrl);
 }

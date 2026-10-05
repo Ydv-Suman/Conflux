@@ -10,8 +10,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.Set;
 
 import static com.conflux.identityservice.security.PathConfig.AUTH;
 import static com.conflux.identityservice.security.PathConfig.LOGIN;
@@ -34,12 +34,18 @@ public class AuthController {
 
     private final AuthService authService;
     private final boolean secureCookies;
+    private final String cookieSameSite;
 
     public AuthController(
             AuthService authService,
-            @Value("${app.auth.secure-cookies}") boolean secureCookies) {
+            @Value("${app.auth.secure-cookies}") boolean secureCookies,
+            @Value("${app.auth.cookie-same-site}") String cookieSameSite) {
         this.authService = authService;
         this.secureCookies = secureCookies;
+        this.cookieSameSite = normalizeSameSite(cookieSameSite);
+        if ("None".equals(this.cookieSameSite) && !secureCookies) {
+            throw new IllegalArgumentException("SameSite=None requires secure cookies");
+        }
     }
 
     @PostMapping(path = LOGIN, version = "1.0")
@@ -53,20 +59,23 @@ public class AuthController {
 
     @PostMapping(path = REFRESH, version = "1.0")
     public ResponseEntity<TokenResponseDto> refresh(HttpServletRequest request) {
-        String refreshToken = request.getCookies() == null ? null
+        return tokenResponse(authService.refresh(refreshCookie(request), request.getRemoteAddr()));
+    }
+
+    @PostMapping(path = LOGOUT, version = "1.0")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        authService.logout(refreshCookie(request));
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO).toString())
+                .build();
+    }
+
+    private String refreshCookie(HttpServletRequest request) {
+        return request.getCookies() == null ? null
                 : Arrays.stream(request.getCookies())
                         .filter(cookie -> REFRESH_COOKIE.equals(cookie.getName()))
                         .map(Cookie::getValue)
                         .findFirst().orElse(null);
-        return tokenResponse(authService.refresh(refreshToken, request.getRemoteAddr()));
-    }
-
-    @PostMapping(path = LOGOUT, version = "1.0")
-    public ResponseEntity<Void> logout(@AuthenticationPrincipal Jwt jwt) {
-        authService.logout(jwt);
-        return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO).toString())
-                .build();
     }
 
     private ResponseEntity<TokenResponseDto> tokenResponse(AuthService.Tokens tokens) {
@@ -82,9 +91,22 @@ public class AuthController {
         return ResponseCookie.from(REFRESH_COOKIE, value)
                 .httpOnly(true)
                 .secure(secureCookies)
-                .sameSite("Strict")
+                .sameSite(cookieSameSite)
                 .path("/api/auth")
                 .maxAge(maxAge.isNegative() ? Duration.ZERO : maxAge)
                 .build();
+    }
+
+    private String normalizeSameSite(String value) {
+        String candidate = value == null ? "" : value.trim();
+        if (candidate.isEmpty()) {
+            throw new IllegalArgumentException("Cookie SameSite must be Strict, Lax, or None");
+        }
+        String normalized = candidate.substring(0, 1).toUpperCase(Locale.ROOT)
+                + candidate.substring(1).toLowerCase(Locale.ROOT);
+        if (!Set.of("Strict", "Lax", "None").contains(normalized)) {
+            throw new IllegalArgumentException("Cookie SameSite must be Strict, Lax, or None");
+        }
+        return normalized;
     }
 }

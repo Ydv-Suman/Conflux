@@ -102,6 +102,15 @@ public class AuthService {
         LOGGER.info("event=AUTH_LOGOUT_SUCCESS user_id={}", jwt.getSubject());
     }
 
+    @Transactional
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+        sessions.revokeByRefreshTokenHash(hash(refreshToken)).ifPresent(userId ->
+                LOGGER.info("event=AUTH_LOGOUT_SUCCESS user_id={}", userId));
+    }
+
     private String randomToken() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);

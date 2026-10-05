@@ -3,6 +3,7 @@ package com.conflux.identityservice.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.config.annotation.ApiVersionConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -52,6 +53,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins.toArray(String[]::new))
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*")
+                .exposedHeaders(HttpHeaders.RETRY_AFTER)
                 .allowCredentials(true);
     }
 
