@@ -1,0 +1,31 @@
+spring:
+  config:
+    import:
+      - optional:file:./secrets/.env[.properties]
+      - optional:file:services/identity-service/secrets/.env[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  mail:
+    host: localhost
+
+app:
+  cors:
+    allowed-origins: http://localhost:5173
+  mail-from: no-reply@conflux.local
+  base-url: http://localhost:5173
+  email-verification-ttl: 24h
+  auth:
+    secure-cookies: false
+  jwt:
+    issuer: http://localhost:8080
+    audience: conflux-api
+    access-ttl: 15m
+    refresh-ttl: 30d
+    public-key: classpath:jwt-public.pem
+    private-key: classpath:jwt-private.pem
+
+server:
+  forward-headers-strategy: none

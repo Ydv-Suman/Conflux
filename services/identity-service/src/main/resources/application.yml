@@ -1,13 +1,14 @@
 server:
   port: 8080
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
     name: identity-service
   config:
     import:
-      - optional:file:.env[.properties]
-      - optional:file:services/identity-service/.env[.properties]
+      - optional:file:./secrets/.env[.properties]
+      - optional:file:services/identity-service/secrets/.env[.properties]
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -25,6 +26,17 @@ spring:
       mail.smtp.starttls.enable: true
 
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   mail-from: ${MAIL_FROM:no-reply@conflux.local}
-  base-url: ${APP_BASE_URL:http://localhost:3000}
+  base-url: ${APP_BASE_URL:http://localhost:5173}
   email-verification-ttl: ${EMAIL_VERIFICATION_TTL:24h}
+  auth:
+    secure-cookies: ${AUTH_SECURE_COOKIES:false}
+  jwt:
+    issuer: ${JWT_ISSUER:http://localhost:8080}
+    audience: ${JWT_AUDIENCE:conflux-api}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:30d}
+    public-key: ${JWT_PUBLIC_KEY:file:./secrets/jwt-public.pem}
+    private-key: ${JWT_PRIVATE_KEY:file:./secrets/jwt-private.pem}
