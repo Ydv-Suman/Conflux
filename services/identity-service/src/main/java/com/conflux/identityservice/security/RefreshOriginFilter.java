@@ -14,9 +14,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.conflux.identityservice.security.PathConfig.LOGOUT_API;
-import static com.conflux.identityservice.security.PathConfig.REFRESH_API;
-
 @Component
 public class RefreshOriginFilter extends OncePerRequestFilter {
 
@@ -42,8 +39,8 @@ public class RefreshOriginFilter extends OncePerRequestFilter {
 
     private boolean isCookieAuthRequest(HttpServletRequest request) {
         return HttpMethod.POST.matches(request.getMethod())
-                && (REFRESH_API.equals(request.getRequestURI())
-                    || LOGOUT_API.equals(request.getRequestURI()))
+                && ("/api/auth/refresh".equals(request.getRequestURI())
+                    || "/api/auth/logout".equals(request.getRequestURI()))
                 && request.getCookies() != null
                 && Arrays.stream(request.getCookies()).anyMatch(cookie ->
                         REFRESH_COOKIE.equals(cookie.getName()) && !cookie.getValue().isBlank());

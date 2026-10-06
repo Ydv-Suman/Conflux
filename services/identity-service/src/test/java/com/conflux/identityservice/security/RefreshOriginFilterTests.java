@@ -63,13 +63,13 @@ class RefreshOriginFilterTests {
     }
 
     private MockHttpServletRequest refreshRequest() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", PathConfig.REFRESH_API);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/refresh");
         request.setCookies(new Cookie("conflux_refresh", "opaque-refresh-token"));
         return request;
     }
 
     private MockHttpServletRequest logoutRequest() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", PathConfig.LOGOUT_API);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/logout");
         request.setCookies(new Cookie("conflux_refresh", "opaque-refresh-token"));
         return request;
     }

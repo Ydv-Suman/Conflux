@@ -53,9 +53,18 @@ public class JwtConfig {
                 : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Invalid audience", null));
         OAuth2TokenValidator<Jwt> revocationValidator = jwt -> {
             try {
-                UUID sessionId = UUID.fromString(jwt.getClaimAsString("sid"));
-                return jwt.getId() != null
-                        && !revokedJwts.exists(UUID.fromString(jwt.getId()))
+                String subject = jwt.getSubject();
+                String sessionClaim = jwt.getClaimAsString("sid");
+                String tokenId = jwt.getId();
+                if (subject == null || subject.isBlank()
+                        || sessionClaim == null || sessionClaim.isBlank()
+                        || tokenId == null || tokenId.isBlank()) {
+                    return OAuth2TokenValidatorResult.failure(
+                            new OAuth2Error("invalid_token", "Missing token identifier", null));
+                }
+                UUID.fromString(subject);
+                UUID sessionId = UUID.fromString(sessionClaim);
+                return !revokedJwts.exists(UUID.fromString(tokenId))
                         && sessions.isActive(sessionId)
                         ? OAuth2TokenValidatorResult.success()
                         : OAuth2TokenValidatorResult.failure(

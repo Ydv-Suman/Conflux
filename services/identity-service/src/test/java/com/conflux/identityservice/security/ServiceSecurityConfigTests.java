@@ -15,10 +15,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static com.conflux.identityservice.security.PathConfig.USERS_API;
-import static com.conflux.identityservice.security.PathConfig.LOGOUT_API;
 import jakarta.servlet.http.Cookie;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.hamcrest.Matchers.not;
@@ -33,9 +35,12 @@ class ServiceSecurityConfigTests {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private IUserService userService;
+
     @Test
     void registrationDoesNotRequireCsrfToken() throws Exception {
-        mvc.perform(post(USERS_API)
+        mvc.perform(post("/api/users")
                         .contentType("application/json")
                         .content("""
                                 {"firstName":"First","lastName":"Last","username":"test.user",
@@ -47,7 +52,7 @@ class ServiceSecurityConfigTests {
 
     @Test
     void invalidRegistrationReturnsBadRequestWithoutEchoingPassword() throws Exception {
-        mvc.perform(post(USERS_API)
+        mvc.perform(post("/api/users")
                         .contentType("application/json")
                         .content("""
                                 {"firstName":"First","lastName":"Last","username":"test.user",
@@ -60,11 +65,27 @@ class ServiceSecurityConfigTests {
 
     @Test
     void cookieLogoutIgnoresAnExpiredBearerToken() throws Exception {
-        mvc.perform(post(LOGOUT_API)
+        mvc.perform(post("/api/auth/logout")
                         .header("Origin", "http://localhost:5173")
                         .header("Authorization", "Bearer expired-token")
                         .cookie(new Cookie("conflux_refresh", "opaque-refresh-token")))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void userCrudRequiresAuthentication() throws Exception {
+        mvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
+        mvc.perform(put("/api/users/me").contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/users/me")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void authenticatedUserCanAccessOnlyOwnProfileRoute() throws Exception {
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        mvc.perform(get("/api/users/me").with(jwt().jwt(token -> token.subject(userId.toString()))))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(userService).getUser(userId);
     }
 
     @TestConfiguration
@@ -72,20 +93,7 @@ class ServiceSecurityConfigTests {
 
         @Bean
         IUserService userService() {
-            return new IUserService() {
-                @Override
-                public void registerUser(
-                        com.conflux.identityservice.dto.RegisterUserRequestDto request) {
-                }
-
-                @Override
-                public void verifyEmail(String token) {
-                }
-
-                @Override
-                public void resendVerification(String email) {
-                }
-            };
+            return mock(IUserService.class);
         }
 
         @Bean

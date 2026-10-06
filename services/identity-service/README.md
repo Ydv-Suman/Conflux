@@ -237,12 +237,42 @@ AWS references: [EKS Secrets Manager integration](https://docs.aws.amazon.com/ek
 
 ## Authentication
 
+- `POST /api/users` registers a local user and sends an email-verification message.
+- `POST /api/users/verify-email` verifies an account using the emailed token.
+- `POST /api/users/resend-verification` sends a new verification token when allowed by the rate limiter.
 - `POST /api/auth/login` accepts `usernameOrEmail` and `password`, returns a 15-minute bearer token, and sets a rotating refresh-token cookie.
 - `POST /api/auth/refresh` rotates the refresh cookie and returns a new bearer token.
 - `POST /api/auth/logout` uses the refresh cookie, revokes the full login session, and clears the cookie even when the access token has expired.
 
 Only email-verified users can log in. Expired revocations, sessions, verification tokens, and rate-limit events are removed hourly.
 Five failed logins within five minutes trigger a fixed 60-second account cooldown; blocked retries do not extend it, and a successful login clears prior account failures. An IP may make 30 login attempts within five minutes.
+
+## Current user
+
+The current-user endpoints require an access token in the `Authorization: Bearer <token>` header. The service always takes the user ID from the validated JWT subject; clients cannot select another user by supplying an ID.
+
+- `GET /api/users/me` returns the authenticated user's profile.
+- `PUT /api/users/me` updates the authenticated user's name and username.
+- `DELETE /api/users/me` permanently deletes the authenticated user's account. Database cascades remove credentials, verification tokens, external identities, and authentication sessions, so existing tokens can no longer be used.
+
+Example update request:
+
+```http
+PUT /api/users/me
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "firstName": "Ada",
+  "middleName": null,
+  "lastName": "Lovelace",
+  "username": "ada.lovelace"
+}
+```
+
+The update endpoint intentionally does not change email addresses or passwords. Those operations require separate verification and credential-confirmation flows. User read, update, and delete operations use parameterized SQL queries through Spring `JdbcClient`.
+
+The public endpoints are limited to `POST` requests for registration, email verification, login, refresh, and logout. All other routes require authentication by default.
 
 ## Run
 

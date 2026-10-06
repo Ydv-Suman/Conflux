@@ -7,13 +7,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.config.annotation.ApiVersionConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
 import java.util.List;
-
-import static com.conflux.identityservice.security.PathConfig.API_PREFIX;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -36,11 +33,6 @@ public class WebConfig implements WebMvcConfigurer {
     }
 
     @Override
-    public void configurePathMatch(PathMatchConfigurer configurer) {
-        configurer.addPathPrefix(API_PREFIX, clazz -> true);
-    }
-
-    @Override
     public void configureApiVersioning(ApiVersionConfigurer configurer) {
         configurer.useMediaTypeParameter(MediaType.parseMediaType("application/vnd.conflux+json"), "v")
                 .addSupportedVersions("1.0")
@@ -49,9 +41,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping(API_PREFIX + "/**")
+        registry.addMapping("/api/**")
                 .allowedOrigins(allowedOrigins.toArray(String[]::new))
-                .allowedMethods("GET", "POST", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders(HttpHeaders.RETRY_AFTER)
                 .allowCredentials(true);

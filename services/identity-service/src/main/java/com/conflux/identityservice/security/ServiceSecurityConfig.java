@@ -16,8 +16,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import java.util.List;
 
 import static org.springframework.security.config.Customizer.withDefaults;
-import static com.conflux.identityservice.security.PathConfig.LOGOUT_API;
-
 @Configuration
 @EnableWebSecurity
 public class ServiceSecurityConfig {
@@ -40,7 +38,7 @@ public class ServiceSecurityConfig {
                         .requestMatchers(HttpMethod.POST, publicPaths.toArray(String[]::new)).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .bearerTokenResolver(request -> LOGOUT_API.equals(request.getRequestURI())
+                        .bearerTokenResolver(request -> "/api/auth/logout".equals(request.getRequestURI())
                                 ? null : bearerTokens.resolve(request))
                         .jwt(withDefaults()))
                 .build();

@@ -4,6 +4,7 @@ import com.conflux.identityservice.dto.RegisterUserRequestDto;
 import com.conflux.identityservice.entity.User;
 import com.conflux.identityservice.exception.PasswordMismatchException;
 import com.conflux.identityservice.repository.UserRepository;
+import com.conflux.identityservice.repository.UserSqlRepository;
 import com.conflux.identityservice.service.EmailVerificationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 class UserServiceImplTests {
 
     private Consumer<User> saveBehavior = user -> { };
@@ -58,8 +60,9 @@ class UserServiceImplTests {
             return action.doInTransaction(null);
         }
     };
+    private final UserSqlRepository userSqlRepository = mock(UserSqlRepository.class);
     private final UserServiceImpl service =
-            new UserServiceImpl(repository, encoder, verificationService, transactions);
+            new UserServiceImpl(repository, encoder, verificationService, transactions, userSqlRepository);
 
     @Test
     void normalizesIdentityAndHidesConcurrentDuplicates() {
