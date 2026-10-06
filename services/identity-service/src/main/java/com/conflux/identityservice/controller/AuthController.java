@@ -21,13 +21,8 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
 
-import static com.conflux.identityservice.security.PathConfig.AUTH;
-import static com.conflux.identityservice.security.PathConfig.LOGIN;
-import static com.conflux.identityservice.security.PathConfig.LOGOUT;
-import static com.conflux.identityservice.security.PathConfig.REFRESH;
-
 @RestController
-@RequestMapping(AUTH)
+@RequestMapping("/api/auth")
 public class AuthController {
 
     private static final String REFRESH_COOKIE = "conflux_refresh";
@@ -48,7 +43,7 @@ public class AuthController {
         }
     }
 
-    @PostMapping(path = LOGIN, version = "1.0")
+    @PostMapping(path = "/login", version = "1.0")
     public ResponseEntity<TokenResponseDto> login(
             @Valid @RequestBody LoginRequestDto request,
             HttpServletRequest servletRequest) {
@@ -57,12 +52,12 @@ public class AuthController {
         return tokenResponse(tokens);
     }
 
-    @PostMapping(path = REFRESH, version = "1.0")
+    @PostMapping(path = "/refresh", version = "1.0")
     public ResponseEntity<TokenResponseDto> refresh(HttpServletRequest request) {
         return tokenResponse(authService.refresh(refreshCookie(request), request.getRemoteAddr()));
     }
 
-    @PostMapping(path = LOGOUT, version = "1.0")
+    @PostMapping(path = "/logout", version = "1.0")
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         authService.logout(refreshCookie(request));
         return ResponseEntity.noContent()

@@ -2,10 +2,15 @@ package com.conflux.identityservice.service.impl;
 
 import com.conflux.identityservice.constants.ApplicationConstants;
 import com.conflux.identityservice.dto.RegisterUserRequestDto;
+import com.conflux.identityservice.dto.UpdateUserRequestDto;
+import com.conflux.identityservice.dto.UserDto;
 import com.conflux.identityservice.entity.LocalCredential;
 import com.conflux.identityservice.entity.User;
 import com.conflux.identityservice.entity.UserEmail;
 import com.conflux.identityservice.exception.PasswordMismatchException;
+import com.conflux.identityservice.exception.UserNotFoundException;
+import com.conflux.identityservice.exception.UsernameAlreadyExistsException;
+import com.conflux.identityservice.repository.UserSqlRepository;
 import com.conflux.identityservice.repository.UserRepository;
 import com.conflux.identityservice.service.IUserService;
 import com.conflux.identityservice.service.EmailVerificationService;
@@ -14,9 +19,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.sql.SQLException;
+import java.util.UUID;
 
 @Service
 public class UserServiceImpl implements IUserService {
@@ -29,17 +36,20 @@ public class UserServiceImpl implements IUserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
     private final TransactionOperations transactions;
+    private final UserSqlRepository userSqlRepository;
 
 
     public UserServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             EmailVerificationService emailVerificationService,
-            TransactionOperations transactions) {
+            TransactionOperations transactions,
+            UserSqlRepository userSqlRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailVerificationService = emailVerificationService;
         this.transactions = transactions;
+        this.userSqlRepository = userSqlRepository;
     }
 
 
@@ -85,6 +95,51 @@ public class UserServiceImpl implements IUserService {
         emailVerificationService.resend(email);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public UserDto getUser(UUID userId) {
+        return userSqlRepository.findProfile(userId).map(this::toDto)
+                .orElseThrow(UserNotFoundException::new);
+    }
+
+    @Override
+    @Transactional
+    public UserDto updateUser(UUID userId, UpdateUserRequestDto request) {
+        try {
+            if (userSqlRepository.update(userId, request) == 0) {
+                throw new UserNotFoundException();
+            }
+        } catch (DataIntegrityViolationException failure) {
+            if (isConstraintViolation(failure, USERNAME_UNIQUE_INDEX)) {
+                throw new UsernameAlreadyExistsException();
+            }
+            throw failure;
+        }
+        LOGGER.info("event=ACCOUNT_UPDATED user_id={}", userId);
+        return getUser(userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteUser(UUID userId) {
+        if (userSqlRepository.delete(userId) == 0) {
+            throw new UserNotFoundException();
+        }
+        LOGGER.info("event=ACCOUNT_DELETED user_id={}", userId);
+    }
+
+    private UserDto toDto(UserSqlRepository.UserProfile profile) {
+        UserDto dto = new UserDto();
+        dto.setFirstName(profile.firstName());
+        dto.setMiddleName(profile.middleName());
+        dto.setLastName(profile.lastName());
+        dto.setEmail(profile.email());
+        dto.setUsername(profile.username());
+        dto.setEmailVerified(profile.emailVerified());
+        dto.setCreatedAt(profile.createdAt());
+        return dto;
+    }
+
     private void validatePasswordConfirmation(String password, String confirmPassword) {
         if (!password.equals(confirmPassword)) {
             throw new PasswordMismatchException(ApplicationConstants.PASSWORD_MISMATCH);
@@ -99,6 +154,19 @@ public class UserServiceImpl implements IUserService {
                     String message = detail.getMessage();
                     if (message != null && (message.contains(USERNAME_UNIQUE_INDEX)
                             || message.contains(EMAIL_UNIQUE_INDEX))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isConstraintViolation(Throwable failure, String constraint) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException && "23505".equals(sqlException.getSQLState())) {
+                for (Throwable detail = failure; detail != null; detail = detail.getCause()) {
+                    if (detail.getMessage() != null && detail.getMessage().contains(constraint)) {
                         return true;
                     }
                 }
