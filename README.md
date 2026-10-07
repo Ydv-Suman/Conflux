@@ -6,7 +6,7 @@ Conflux is a collaborative desktop IDE designed for software teams working with 
 
 Instead of giving every developer an isolated AI coding assistant, Conflux creates a shared project with collaborative **workstreams** where team members and specialized AI agents work on independent features without disrupting one another.
 
-Developers can edit code together in real time, see each other's cursors and changes, communicate through team chat, use a shared terminal, assign tasks to a shared AI engineering team, review AI-generated changes, and approve consequential actions before they enter the canonical workspace.
+Developers can edit code together in real time, see each other's cursors and changes, communicate through team and workstream chat, use a per-workstream shared terminal, assign tasks to shared AI role profiles, review AI-generated changes, and approve consequential actions before they enter the canonical workspace.
 
 The source repository remains on developers' machines. Conflux does not require the repository itself to be hosted by Conflux.
 
@@ -86,6 +86,21 @@ CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
 ```
 
 Each task creates independent Coder, Reviewer, and Security runs with workstream-specific context. An approved AI patch must be validated against the latest workstream revision before it is applied.
+
+The collaboration scope is explicit:
+
+| Feature | Scope |
+| --- | --- |
+| Members and capabilities | Team |
+| Repository and Git history | Project |
+| General chat | Team or project |
+| Feature branch and worktree | Workstream |
+| Realtime documents and presence | Workstream |
+| Shared terminal and feature chat | Workstream |
+| Task conversation | Task |
+| Coder, Reviewer, and Security runs | Task |
+| AI context | Task plus workstream |
+| Merge | Workstream into project |
 
 ---
 
@@ -943,9 +958,11 @@ Policy Engine
 
 ---
 
-# Team Chat
+# Team and Workstream Chat
 
-Each workspace contains persistent team communication.
+Conflux separates broad coordination from feature-specific discussion.
+
+Team or project chat is used for announcements and coordination across workstreams. Workstream chat contains feature discussion, task context, and agent mentions. Mentioning an agent profile in workstream chat creates a task whose runs inherit that workstream's context.
 
 Example:
 
@@ -965,6 +982,19 @@ Example:
 │ ────────────────────────────────  │
 │ Message team...                   │
 └───────────────────────────────────┘
+```
+
+```text
+# authentication
+
+Alice:
+@Coder investigate refresh-token expiry.
+
+David:
+Also check session invalidation.
+
+CoderRun #501:
+Investigating in feature/auth-refresh.
 ```
 
 Supported mentions may include:
@@ -1130,7 +1160,7 @@ Structured Candidate Patches
 Terminal
         │
         ▼
-Single Execution Host + PTY Stream
+Per-Workstream Execution Host + PTY Stream
 
 
 Authorization
@@ -1143,7 +1173,7 @@ RBAC + Policy Engine
 
 # Backend Architecture
 
-The updated target architecture uses three backend services. Identity and team capabilities are part of the Collaboration Service boundary; the current standalone identity service remains an implementation-stage foundation while the target boundaries evolve.
+The target architecture uses three Java services and one Python Agent Service. They remain separate because they own different state and have different latency and scaling requirements.
 
 ```text
                          CONFLUX DESKTOP
@@ -1151,36 +1181,26 @@ The updated target architecture uses three backend services. Identity and team c
                               │
                        REST / WebSocket
                               │
-                              ▼
-                    COLLABORATION SERVICE
-                              Go
-        Teams / RBAC / Presence / Chat / Workstreams
-        CRDT relay / Approvals / Leadership / Terminal
-                              │
-                             gRPC
-                   ┌──────────┴──────────┐
-                   ▼                     ▼
-            AGENT SERVICE        WORKSPACE SERVICE
-                 Go               Java / Spring Boot
-          orchestration and       Git, branches,
-          task agent runs         patches and tests
+             ┌────────────────┬───────────────┬────────────────┐
+             ▼                ▼               ▼                ▼
+       COLLABORATION       IDENTITY        WORKSPACE          AGENT
+          SERVICE          AND TEAM         SERVICE           SERVICE
+       Java/WebFlux      Java/Spring      Java/Spring         Python
+       workstream WS     auth and RBAC    Git semantics     task-scoped runs
+       Yjs/presence      membership       patches/merge     review pipeline
 ```
 
-Internal service communication uses:
-
-```text
-gRPC
-+
-Protocol Buffers
-```
+Internal RPC and Protocol Buffers are introduced only when a cross-service feature requires them. They are not part of the initial convergence proof.
 
 ---
 
 # Collaboration Service
 
-**Language:** Go
+**Language:** Java
 
-The Collaboration Service owns human collaboration and the latency-sensitive realtime path.
+**Framework:** Spring WebFlux with Reactor Netty
+
+The Collaboration Service owns the latency-sensitive realtime path. It does not own durable team, project, task, or Git business rules.
 
 Primary question:
 
@@ -1193,7 +1213,7 @@ Presence
 
 WebSocket connections
 
-Realtime workspace events
+Realtime workstream events
 
 CRDT update relay
 
@@ -1203,24 +1223,24 @@ Cursor synchronization
 
 Reconnect / resynchronization
 
-Teams, membership, RBAC, and capabilities
+Workstream room membership after join authorization
 
-Projects and workstreams
+Realtime workstream chat fanout
 
-Approvals and session leadership
-
-Workstream chat and terminal control
+Terminal output fanout
 ```
+
+Yjs updates use binary WebSocket frames and are treated as opaque data by the first server implementation. Database access and service-to-service calls never occur for each keystroke.
 
 ---
 
-# Current Identity Service
+# Identity and Team Service
 
 **Language:** Java
 
 **Framework:** Spring Boot
 
-The current Java identity service provides authentication and identity foundations. In the target three-service architecture, team, RBAC, leadership, and collaboration responsibilities belong to the Go Collaboration Service.
+The existing Java identity service provides the authentication foundation and grows to own team-level identity, authorization, and leadership rules.
 
 Primary question:
 
@@ -1238,6 +1258,12 @@ Local and external identities
 JWT sessions, refresh rotation, logout, and revocation
 
 Authentication rate limiting and security cleanup
+
+Teams, invitations, and membership
+
+Capabilities and leadership priority
+
+Team and project chat
 ```
 
 The Collaboration Service consumes the authenticated identity and applies team/workstream authorization when a client joins a realtime room.
@@ -1246,7 +1272,11 @@ The Collaboration Service consumes the authenticated identity and applies team/w
 
 # Agent Service
 
-**Language:** Go
+**Language:** Python
+
+**Framework:** FastAPI with an asynchronous HTTP/event-streaming runtime
+
+The initial implementation may use the OpenAI Agents SDK for Python for tool execution, guardrails, streaming, tracing, and resumable task runs. Conflux still owns task, workstream, patch, approval, and authorization semantics rather than delegating those product rules to the SDK.
 
 The Agent Service owns AI execution and orchestration.
 
@@ -1257,13 +1287,9 @@ Primary question:
 Responsibilities:
 
 ```text
-Agent Orchestrator
+Agent profiles for Coder, Reviewer, and Security
 
-Coder Agent
-
-Reviewer Agent
-
-Security Agent
+Task-scoped CoderRun, ReviewerRun, and SecurityRun instances
 
 Task lifecycle
 
@@ -1294,7 +1320,7 @@ Cost controls
 Prompt-injection protection
 ```
 
-Agent workloads can use Redis Streams for asynchronous processing.
+Agent runs are scoped to a task and its workstream. Runs in unrelated workstreams do not share conversation or repository context. Redis Streams may be added only when in-process execution no longer meets measured durability or scaling needs.
 
 ---
 
@@ -1315,6 +1341,10 @@ Responsibilities:
 ```text
 Workspace metadata
 
+Projects and workstreams
+
+Workstream lifecycle and participants
+
 Repository metadata
 
 Repository synchronization metadata
@@ -1322,6 +1352,8 @@ Repository synchronization metadata
 Git state
 
 Branches
+
+Local worktree mapping and policy
 
 Git checkpoints
 
@@ -1358,9 +1390,13 @@ Terminal-session metadata
 Execution-host coordination
 
 Workspace consistency checks
+
+Cross-workstream path and line-range overlap detection
+
+Update-from-base and merge lifecycle
 ```
 
-The Java Workspace Service is not placed in the realtime keystroke path.
+The Java Workspace Service records shared metadata and policy. The trusted Tauri/Rust runtime performs filesystem, Git-worktree, and PTY operations on each developer machine. The Workspace Service is not placed in the realtime keystroke path.
 
 ---
 
@@ -1431,9 +1467,7 @@ PostgreSQL
 
 Each service owns its data.
 
-Services must not directly query another service's tables.
-
-Cross-service access occurs through gRPC contracts.
+Services must not directly query another service's tables. When a cross-service call is required, it uses an explicit versioned contract; gRPC is introduced only when its operational cost is justified.
 
 Redis is used for:
 
@@ -1498,9 +1532,9 @@ Code generation
 
 Breaking-change detection
 
-Go generation
-
 Java generation
+
+Python generation
 ```
 
 ---
@@ -1558,17 +1592,14 @@ conflux/
 ├── services/
 │   │
 │   ├── collaboration/
-│   │   ├── cmd/
-│   │   │   └── server/
-│   │   │
-│   │   ├── internal/
-│   │   │   ├── presence/
-│   │   │   ├── realtime/
-│   │   │   ├── documents/
-│   │   │   └── grpc/
-│   │   │
-│   │   ├── migrations/
-│   │   ├── go.mod
+│   │   ├── src/
+│   │   │   ├── main/java/conflux/collaboration/
+│   │   │   │   ├── presence/
+│   │   │   │   ├── realtime/
+│   │   │   │   ├── documents/
+│   │   │   │   └── rooms/
+│   │   │   └── test/
+│   │   ├── pom.xml
 │   │   └── Dockerfile
 │   │
 │   ├── identity/
@@ -1589,27 +1620,20 @@ conflux/
 │   │   └── Dockerfile
 │   │
 │   ├── agent/
-│   │   ├── cmd/
-│   │   │   └── server/
-│   │   │
-│   │   ├── internal/
-│   │   │   ├── orchestrator/
-│   │   │   ├── agents/
-│   │   │   │   ├── coder/
-│   │   │   │   ├── reviewer/
-│   │   │   │   └── security/
-│   │   │   │
-│   │   │   ├── tasks/
-│   │   │   ├── workers/
-│   │   │   ├── llm/
-│   │   │   ├── context/
-│   │   │   ├── tools/
-│   │   │   ├── policies/
-│   │   │   ├── usage/
-│   │   │   └── grpc/
-│   │   │
-│   │   ├── migrations/
-│   │   ├── go.mod
+│   │   ├── src/
+│   │   │   └── conflux_agent/
+│   │   │       ├── orchestrator/
+│   │   │       ├── profiles/
+│   │   │       ├── runs/
+│   │   │       ├── tasks/
+│   │   │       ├── llm/
+│   │   │       ├── context/
+│   │   │       ├── tools/
+│   │   │       ├── policies/
+│   │   │       └── usage/
+│   │   ├── tests/
+│   │   ├── pyproject.toml
+│   │   ├── uv.lock
 │   │   └── Dockerfile
 │   │
 │   └── workspace/
@@ -1713,8 +1737,9 @@ conflux/
 | Components              | shadcn/ui                    |
 | UI state                | Zustand                      |
 | API state               | TanStack Query               |
-| Realtime collaboration  | Go                           |
-| Agent backend           | Go                           |
+| Realtime collaboration  | Java / Spring WebFlux       |
+| Agent backend           | Python / FastAPI             |
+| Initial agent runtime   | OpenAI Agents SDK for Python |
 | Identity and team       | Java / Spring Boot           |
 | Workspace backend       | Java / Spring Boot           |
 | Java framework          | Spring Boot                  |
@@ -1941,7 +1966,7 @@ Two desktop clients
 
         ↓
 
-Join same workspace
+Join same hardcoded workstream
 
         ↓
 
@@ -2197,9 +2222,11 @@ CRDTs
 
 Microservices
 
-Go concurrency
+Java concurrency, virtual threads, and reactive streams
 
 Java / Spring Boot
+
+Python async agent orchestration
 
 Rust native development
 
@@ -2257,7 +2284,7 @@ Humans
    +
 Shared Code
    +
-Shared Terminal
+Per-Workstream Terminal
    +
 Shared Communication
    +
