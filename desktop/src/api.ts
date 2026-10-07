@@ -20,7 +20,7 @@ type RequestOptions = {
 
 export const request = async <T = void>(
   path: string,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   options: RequestOptions = {},
 ): Promise<T> => {
   const response = await fetch(`${API_URL}${path}`, {
