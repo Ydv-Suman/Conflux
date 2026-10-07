@@ -2,136 +2,219 @@
 
 ## Purpose
 
-Conflux is a local-first collaborative development environment. Developers keep local repository copies while realtime document updates move between connected clients. Git remains the durable source-control layer.
+Conflux is a local-first collaborative development environment. Developers keep local repository copies, collaborate in isolated feature workstreams, and use Git as the durable source-control layer.
 
-This document describes the architecture being built. The current implementation is intentionally smaller than the long-term product design.
-
-## Current system
-
-The first prototype runs entirely inside one Tauri application:
+The product hierarchy is:
 
 ```text
-┌──────────────────────────────────────────────────────┐
-│ Rust core                                            │
-│                                                      │
-│  Yjs update log ── persistence ── app data directory │
-│    │                                                 │
-│    └── Tauri events ────┬──────────────────────┐     │
-│                         │                      │     │
-│                  Renderer A             Renderer B  │
-│                  Y.Doc + textarea       Y.Doc + textarea
-└──────────────────────────────────────────────────────┘
+Team -> Project -> Workstream -> Task -> Agent Runs
 ```
 
-### Responsibilities
+This document describes the architecture being built. The current implementation is intentionally smaller than the target system.
 
-| Component | Responsibility |
-| --- | --- |
-| Rust core | Persist Yjs updates, emit updates to open windows, and create windows |
-| Tauri command boundary | Expose only document state, document updates, and window creation |
-| Renderer | Display the editor, maintain a local `Y.Doc`, and apply local or remote updates |
-| Yjs | Merge concurrent document changes and encode synchronization updates |
+## Core collaboration boundary
 
-The renderer has no direct Node.js or unrestricted filesystem access.
-
-## Next system: networked collaboration
-
-IPC is a local transport used to prove document convergence. The next milestone replaces that relay with a WebSocket connection:
+A project is the team-visible repository. A workstream is the live collaboration and isolation boundary within that project.
 
 ```text
-┌──────────────────┐       WebSocket       ┌──────────────────────┐
-│ Alice's desktop  │◄─────────────────────►│ Collaboration server │
-│ Local Y.Doc      │                       │ Workspace rooms      │
-└──────────────────┘                       │ Yjs update relay     │
-                                           │ Document persistence │
-┌──────────────────┐       WebSocket       │ Reconnect sync       │
-│ Bob's desktop    │◄─────────────────────►│                      │
-│ Local Y.Doc      │                       └──────────────────────┘
-└──────────────────┘
+Project
+├── Authentication workstream -> branch/worktree -> participants and task runs
+├── Payments workstream       -> branch/worktree -> participants and task runs
+└── Notifications workstream  -> branch/worktree -> participants and task runs
 ```
 
-The initial server should remain one deployable service with one hardcoded workspace room. Authentication, teams, and the remaining services are added only after two independent clients reliably reconnect and converge.
+Realtime edits, presence, workstream chat, terminals, and task context are scoped to a workstream. Team members may inspect another workstream without receiving its unfinished changes in their active working tree.
+
+Each workstream records at least:
+
+- project, branch, base revision, and current revision
+- local Git-worktree mapping
+- active collaborative documents
+- participants and presence
+- workstream chat and terminal session
+- tasks, agent runs, candidate patches, and approvals
+- merge state and overlap with other workstreams
+
+Suggested lifecycle:
+
+```text
+CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
+                        |               |
+                        +-> BLOCKED     +-> CONFLICT
+```
+
+## Current implementation
+
+The repository currently contains:
+
+- a Tauri 2 desktop client with authentication and account management
+- a Java/Spring Boot identity service
+- no implemented collaborative editor, Yjs transport, collaboration service, workstream manager, or agent service yet
+
+The next implementation milestone is therefore a narrow multiplayer-editor proof, not another business service.
+
+## Next milestone: one networked workstream
+
+The first collaboration slice uses one hardcoded project, workstream, room, and text document:
+
+```text
+Alice's desktop              Java Collaboration Service              Bob's desktop
+Local Y.Doc        <------>  WebFlux WebSocket room       <------>  Local Y.Doc
+local file                   update relay + persistence              local file
+```
+
+Messages identify the correct boundary even while values are hardcoded:
+
+```text
+projectId
+workstreamId
+documentId
+clientId
+```
+
+The server initially treats Yjs updates as opaque binary messages. It does not need to interpret or merge document content. Authentication, multiple workstreams, presence, terminals, agents, Redis, and cross-service RPC remain outside this milestone.
 
 ## Target service boundaries
 
-The target backend has four services split evenly across Go and Java by workload type:
+The target backend uses Java while preserving independently scalable responsibility boundaries:
 
-| Service | Language | Responsibility |
+| Service | Runtime | Responsibility |
 | --- | --- | --- |
-| Realtime Collaboration | Go | WebSockets, Yjs relay, rooms, presence, cursors, and reconnect |
-| Agent | Go | AI orchestration, tools, review pipeline, event streaming, and usage limits |
-| Identity and Team | Java / Spring Boot | Authentication, teams, invitations, RBAC, leadership, and chat |
-| Workspace | Java / Spring Boot | Repository metadata, Git, checkpoints, patches, approvals, and terminal policy |
+| Realtime Collaboration | Java, Spring WebFlux, Reactor Netty | Workstream WebSockets, Yjs relay, presence, cursors, reconnect, and realtime fanout |
+| Identity and Team | Java, Spring Boot | Authentication, teams, invitations, membership, capabilities, leadership, and team chat |
+| Workspace | Java, Spring Boot | Projects, workstreams, repository metadata, Git policy, checkpoints, overlap detection, patches, approvals, and merge lifecycle |
+| Agent | Python, FastAPI | Agent profiles, task-scoped runs, orchestration, tools, review pipeline, event streaming, and usage limits |
 
-Go owns connection-heavy and concurrent workloads. Java owns durable business rules and transactional state. The service boundary must keep the realtime typing path independent from database-heavy operations.
+Service boundaries follow data ownership, latency, and scaling requirements rather than programming language. Realtime Collaboration uses non-blocking WebSockets. The Java transactional services use ordinary Spring request handling. The Python Agent Service uses asynchronous I/O for model calls, tool coordination, and event streaming.
 
-## State ownership
+Using one backend language does not justify combining these responsibilities into one application. In particular, database-heavy work and agent execution must remain outside the realtime typing path.
 
-| State | Owner | Durability |
-| --- | --- | --- |
-| Active document content | Yjs document | Persisted locally and by Realtime Collaboration |
-| Cursor, selection, and online presence | Realtime Collaboration | Ephemeral |
-| Repository history | Git | Durable |
-| Team membership, permissions, and chat | Identity and Team | Durable |
-| Repository and terminal policy | Workspace | Durable or session-scoped as appropriate |
-| AI task execution | Agent | Durable task events |
-| Candidate patches and approvals | Workspace | Durable until approved or rejected |
+## Local and remote responsibilities
 
-CRDT synchronization does not replace Git. Yjs handles live edits; Git records meaningful checkpoints and history.
+The trusted Tauri/Rust runtime owns operations on the developer's machine:
+
+- filesystem access and repository path validation
+- Git commands, branches, and local worktrees
+- PTY creation and process execution
+- secure credential storage
+- persistence of accepted collaborative content to local files
+
+Remote services own shared metadata, authorization, coordination, and event relay. A remote Workspace service records worktree mappings and policy but does not directly manipulate a developer's filesystem.
+
+## State ownership and scope
+
+| State | Scope | Owner | Durability |
+| --- | --- | --- | --- |
+| Users, membership, capabilities | Team | Identity and Team | Durable |
+| General chat | Team or project | Identity and Team | Durable |
+| Repository identity and Git history | Project | Git plus Workspace metadata | Durable |
+| Branch, base revision, merge state | Workstream | Workspace | Durable |
+| Active document content | Workstream and document | Yjs; persisted locally and by Realtime Collaboration | Durable |
+| Cursor, selection, typing, online presence | Workstream | Realtime Collaboration | Ephemeral |
+| Feature chat | Workstream | Workspace or collaboration persistence boundary | Durable |
+| Terminal output and controller | Workstream | One local execution host plus Realtime Collaboration | Session-scoped |
+| Task definition and conversation | Task | Agent | Durable |
+| Coder, Reviewer, and Security executions | Task | Agent | Durable events |
+| Candidate patches and approvals | Task and workstream | Workspace | Durable until resolved |
+
+## Agent execution model
+
+Coder, Reviewer, and Security are profiles or templates, not permanently running company-wide bots.
+
+```text
+AgentProfile
+├── role and model
+├── system instructions
+├── available tools
+└── permissions
+
+Task #101 in Authentication
+├── CoderRun #501
+├── ReviewerRun #502
+└── SecurityRun #503
+```
+
+Every run receives task and workstream context: project, branch, base and current revisions, relevant documents, participants, task conversation, and current candidate patch. Runs from unrelated workstreams do not share conversational or repository context.
+
+Agent output is always a candidate patch. Before application, Workspace validates its paths, base revision, current workstream revision, policy, review evidence, and test evidence. Human approval is required before it enters the collaborative workstream.
+
+## Workstream isolation and merge
+
+Each workstream maps to a Git branch and may use a dedicated local Git worktree:
+
+```text
+project checkout
+└── .conflux/worktrees
+    ├── auth-refresh
+    ├── payment-webhook
+    └── notifications
+```
+
+The exact storage location is implementation-defined and must not require `.conflux` to be committed. Switching workstreams changes the active worktree instead of rewriting one shared directory between incompatible states.
+
+Workspace compares changed paths, and later changed line ranges, across active workstreams. It reports potential overlap early but leaves conflict resolution to Git and explicit human review.
+
+When the project base advances, other workstreams are marked behind and offered an explicit update operation. They are never silently rebased or merged.
 
 ## Critical editing path
 
-Typing must stay off the database and future service-to-service path:
+Typing stays off databases and service-to-service calls:
 
 ```text
-Local editor → Local Y.Doc → WebSocket relay → Remote Y.Doc → Remote editor
+Local editor -> Local Y.Doc -> Workstream WebSocket room -> Remote Y.Doc -> Remote editor
 ```
 
-Realtime Collaboration may persist updates asynchronously, but it must not call Workspace, Agent, or Identity for every keystroke. Identity authorization occurs when a connection joins a workspace room.
+Realtime Collaboration may persist updates asynchronously. Identity authorization happens when a client joins a workstream room, not for every keystroke. Workspace and Agent are not called for document updates.
+
+The collaboration service enforces bounded message sizes, per-client outbound queues, room capacity, join and idle timeouts, and slow-client behavior.
+
+## Terminal and chat scopes
+
+Each active workstream has its own logical shared terminal and execution context. One explicitly selected local machine hosts its PTY. Authorized participants may observe output, while exactly one controller supplies input at a time.
+
+Team or project chat is used for broad coordination. Workstream chat contains feature-specific discussion and task mentions. Agent mentions in a workstream create tasks whose runs are scoped to that workstream.
 
 ## Security boundary
 
 - Renderers receive narrowly scoped Tauri commands and events.
-- Filesystem and process access remain in the trusted Rust core.
+- Filesystem, Git, and process access remain in the trusted Rust runtime.
 - Identity authenticates users and owns team capabilities.
-- Realtime Collaboration authorizes every room join before accepting document updates.
-- Repository paths are validated before future file operations.
-- AI changes are proposed as patches and never silently applied to the canonical workspace.
+- Realtime Collaboration validates a token and room capability when a client joins.
+- Repository and worktree paths are validated before every local operation.
+- AI runs receive allowlisted tools and cannot silently modify canonical files.
+- Candidate patches are versioned, reviewed, tested, and explicitly approved.
+- Merge and workstream-update operations are auditable and never automatic on conflict.
 
 ## Planned evolution
 
-1. Replace local IPC update relay with one WebSocket collaboration server.
-2. Add reconnect synchronization and a two-client convergence test.
-3. Add ephemeral cursor, selection, and presence messages to Realtime Collaboration.
-4. Add the Java Identity and Team Service for authentication and capability-based authorization.
-5. Add the Java Workspace Service for repository discovery, file editing, and Git checkpoints.
-6. Add shared terminal support with one explicit execution host.
-7. Add the Go Agent Service and candidate-patch approval workflow.
+1. Prove one hardcoded workstream with two desktop clients, Yjs, and a Java WebFlux WebSocket relay.
+2. Add reconnect synchronization, local persistence, and one two-client convergence test.
+3. Add project/workstream identifiers, ephemeral cursor and presence messages, and bounded room behavior.
+4. Add project and workstream creation backed by Git branches and local worktrees.
+5. Connect the existing Identity and Team service for authenticated room authorization and capabilities.
+6. Add per-workstream chat, overlap detection, update-from-base, and merge lifecycle.
+7. Add a per-workstream shared terminal with one explicit execution host.
+8. Add task-scoped Agent runs and the candidate-patch approval workflow.
 
-Build each service only when its milestone begins. Do not add Redis, PostgreSQL, gRPC, or cross-service infrastructure before a feature requires it.
+Build infrastructure only when its milestone requires it. Do not add Redis, distributed room ownership, service discovery, or cross-service RPC to the first convergence proof.
 
-## Current technology
+## Technology
 
 | Area | Technology |
 | --- | --- |
 | Desktop runtime | Tauri 2 |
-| Native runtime | Rust |
-| Frontend language | TypeScript |
-| Build tooling | Vite and Tauri CLI |
-| Styling | Tailwind CSS |
+| Trusted local runtime | Rust |
+| Frontend | TypeScript and React |
+| Code editor | Monaco Editor |
 | Collaborative document | Yjs |
-| Local transport | Tauri commands and events |
-| Network transport | WebSocket, next milestone |
+| Realtime transport | WebSocket |
+| Realtime backend | Java, Spring WebFlux, Reactor Netty |
+| Identity and workspace backends | Java and Spring Boot |
+| Agent backend | Python and FastAPI |
+| Initial agent runtime | OpenAI Agents SDK for Python |
+| Durable business data | PostgreSQL when required |
+| Repository history and isolation | Git branches and worktrees |
 
-## Target backend technology
+## Multiplayer milestone exit condition
 
-| Service | Technology |
-| --- | --- |
-| Realtime Collaboration | Go |
-| Agent | Go |
-| Identity and Team | Java with Spring Boot |
-| Workspace | Java with Spring Boot |
-
-## Milestone exit condition
-
-The networked editor milestone is complete when two separately launched desktop clients can edit one document concurrently, disconnect, reconnect, converge to identical content, and restore that content after restart.
+The first networked-editor milestone is complete when two separately launched desktop clients join the same workstream, concurrently edit one document, disconnect, reconnect, converge to identical content, and restore that content after restart.
