@@ -1,4 +1,4 @@
-import { ApiError, post } from './api';
+import { ApiError, post, request } from './api';
 
 type TokenResponse = {
   accessToken: string;
@@ -9,6 +9,16 @@ type TokenResponse = {
 export type AuthUser = {
   id: string;
   username: string;
+};
+
+export type UserProfile = {
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  email: string;
+  username: string;
+  emailVerified: boolean;
+  createdAt: string;
 };
 
 let accessToken: string | null = null;
@@ -96,5 +106,24 @@ export const authenticatedPost = async <T = void>(path: string, body?: object) =
       throw error;
     }
     return post<T>(path, body, accessToken!);
+  }
+};
+
+export const authenticatedRequest = async <T = void>(
+  path: string,
+  method: 'GET' | 'PUT' | 'DELETE',
+  body?: object,
+) => {
+  if (!accessToken && !(await restoreSession())) {
+    throw new ApiError('Your session has expired. Please log in again.', 401, null);
+  }
+
+  try {
+    return await request<T>(path, method, { body, token: accessToken! });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401 || !(await restoreSession())) {
+      throw error;
+    }
+    return request<T>(path, method, { body, token: accessToken! });
   }
 };

@@ -1,6 +1,7 @@
 import logoUrl from "../../src-tauri/icons/Conflux-Logo.png";
+import projectIconUrl from "../../src-tauri/app-icon.png";
 
-export { logoUrl };
+export { logoUrl, projectIconUrl };
 
 export const fieldClass = "grid gap-2 text-xs font-semibold text-[#30342f]";
 export const inputClass = `
