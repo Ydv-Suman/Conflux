@@ -77,6 +77,8 @@ Project
 
 Realtime CRDT synchronization occurs between collaborators in the same workstream. Other team members retain visibility into its status without automatically receiving every unfinished edit in their active working tree.
 
+Workstream membership is not permanent or exclusive. An authorized project member may join, leave, switch between, or participate in multiple workstreams. A user's active workstream determines which branch, worktree, collaborative documents, terminal, and feature chat are active on that user's machine.
+
 Suggested workstream states:
 
 ```text
@@ -101,6 +103,8 @@ The collaboration scope is explicit:
 | Coder, Reviewer, and Security runs | Task |
 | AI context | Task plus workstream |
 | Merge | Workstream into project |
+
+When a workstream merges into `main`, every project member can see that the project base has advanced. Other active workstreams are marked behind, but their files are not changed automatically. Their participants must explicitly review and update or rebase their workstream when ready.
 
 ---
 
@@ -962,7 +966,7 @@ Policy Engine
 
 Conflux separates broad coordination from feature-specific discussion.
 
-Team or project chat is used for announcements and coordination across workstreams. Workstream chat contains feature discussion, task context, and agent mentions. Mentioning an agent profile in workstream chat creates a task whose runs inherit that workstream's context.
+Team or project chat is available to every project member, regardless of their active workstream, and is used for announcements and coordination across workstreams. Workstream chat contains feature discussion, task context, and agent mentions. Mentioning an agent profile in workstream chat creates a task whose runs inherit that workstream's context.
 
 Example:
 

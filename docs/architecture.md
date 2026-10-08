@@ -25,6 +25,8 @@ Project
 
 Realtime edits, presence, workstream chat, terminals, and task context are scoped to a workstream. Team members may inspect another workstream without receiving its unfinished changes in their active working tree.
 
+Workstream membership is not permanent or exclusive. An authorized project member may join, leave, switch between, or participate in multiple workstreams. A user's active workstream selects the branch, local worktree, collaborative documents, terminal, and feature chat used on that machine.
+
 Each workstream records at least:
 
 - project, branch, base revision, and current revision
@@ -154,7 +156,7 @@ The exact storage location is implementation-defined and must not require `.conf
 
 Workspace compares changed paths, and later changed line ranges, across active workstreams. It reports potential overlap early but leaves conflict resolution to Git and explicit human review.
 
-When the project base advances, other workstreams are marked behind and offered an explicit update operation. They are never silently rebased or merged.
+When a workstream merges, every project member can see that the project base has advanced. Other workstreams are marked behind, but their files are not changed automatically. Their participants must explicitly review and update or rebase the workstream; workstreams are never silently rebased or merged.
 
 ## Critical editing path
 
@@ -172,7 +174,7 @@ The collaboration service enforces bounded message sizes, per-client outbound qu
 
 Each active workstream has its own logical shared terminal and execution context. One explicitly selected local machine hosts its PTY. Authorized participants may observe output, while exactly one controller supplies input at a time.
 
-Team or project chat is used for broad coordination. Workstream chat contains feature-specific discussion and task mentions. Agent mentions in a workstream create tasks whose runs are scoped to that workstream.
+Team or project chat is available to every project member, regardless of active workstream, and is used for broad coordination. Workstream chat contains feature-specific discussion and task mentions. Agent mentions in a workstream create tasks whose runs are scoped to that workstream.
 
 ## Security boundary
 
