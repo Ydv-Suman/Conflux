@@ -1,7 +1,7 @@
 package com.conflux.identityservice.security;
 
-import com.conflux.identityservice.repository.RevokedJwtRepository;
-import com.conflux.identityservice.repository.AuthSessionRepository;
+import com.conflux.identityservice.auth.repository.RevokedJwtRepository;
+import com.conflux.identityservice.auth.repository.AuthSessionRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

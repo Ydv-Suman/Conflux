@@ -1,11 +1,13 @@
 package com.conflux.identityservice.security;
 
-import com.conflux.identityservice.config.WebConfig;
-import com.conflux.identityservice.controller.UserController;
-import com.conflux.identityservice.controller.AuthController;
-import com.conflux.identityservice.service.AuthService;
-import com.conflux.identityservice.service.IUserService;
-import com.conflux.identityservice.service.RateLimitService;
+import com.conflux.identityservice.shared.config.WebConfig;
+import com.conflux.identityservice.user.controller.UserController;
+import com.conflux.identityservice.auth.controller.AuthController;
+import com.conflux.identityservice.team.controller.TeamController;
+import com.conflux.identityservice.auth.service.AuthService;
+import com.conflux.identityservice.user.service.IUserService;
+import com.conflux.identityservice.shared.service.RateLimitService;
+import com.conflux.identityservice.team.service.TeamService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -27,7 +29,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.mock;
 
-@WebMvcTest({UserController.class, AuthController.class})
+@WebMvcTest({UserController.class, AuthController.class, TeamController.class})
 @Import({ServiceSecurityConfig.class, PathConfig.class, WebConfig.class,
         ServiceSecurityConfigTests.StubConfig.class})
 class ServiceSecurityConfigTests {
@@ -81,6 +83,15 @@ class ServiceSecurityConfigTests {
     }
 
     @Test
+    void teamRoutesRequireAuthentication() throws Exception {
+        mvc.perform(get("/api/teams")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/teams")
+                        .contentType("application/json")
+                        .content("{\"name\":\"Payments\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void authenticatedUserCanAccessOnlyOwnProfileRoute() throws Exception {
         java.util.UUID userId = java.util.UUID.randomUUID();
         mvc.perform(get("/api/users/me").with(jwt().jwt(token -> token.subject(userId.toString()))))
@@ -104,6 +115,11 @@ class ServiceSecurityConfigTests {
         @Bean
         AuthService authService() {
             return mock(AuthService.class);
+        }
+
+        @Bean
+        TeamService teamService() {
+            return mock(TeamService.class);
         }
 
         @Bean

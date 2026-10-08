@@ -10,6 +10,8 @@ spring:
     driver-class-name: org.postgresql.Driver
   mail:
     host: localhost
+  jpa:
+    open-in-view: false
 
 app:
   cors:

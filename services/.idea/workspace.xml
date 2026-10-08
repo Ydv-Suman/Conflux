@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="96a3106f-624f-4655-9032-d8a4aa2f1677" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/identity-service/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/exception/GlobalExceptionHandler.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/exception/GlobalExceptionHandler.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/repository/UserEmailRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/repository/UserEmailRepository.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/service/RateLimitService.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/service/RateLimitService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/service/impl/UserServiceImpl.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/main/java/com/conflux/identityservice/service/impl/UserServiceImpl.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/main/resources/application.yml" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/main/resources/application.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/security/ServiceSecurityConfigTests.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/security/ServiceSecurityConfigTests.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/service/impl/UserCrudServiceTests.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/service/impl/UserCrudServiceTests.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/service/impl/UserServiceImplTests.java" beforeDir="false" afterPath="$PROJECT_DIR$/identity-service/src/test/java/com/conflux/identityservice/service/impl/UserServiceImplTests.java" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="88" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="MavenImportPreferences">
+    <option name="generalSettings">
+      <MavenGeneralSettings>
+        <option name="mavenHomeTypeForPersistence" value="WRAPPER" />
+      </MavenGeneralSettings>
+    </option>
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0001947620214378" />
+      <entry key="S2" value="1.1181343152644982" />
+      <entry key="S5" value="1.425549835865813" />
+      <entry key="S10" value="1.6523418090739033" />
+      <entry key="S30" value="1.8672781490842811" />
+      <entry key="S60" value="1.931277697083035" />
+      <entry key="M2" value="1.9650273038018329" />
+      <entry key="M5" value="1.9858613493583888" />
+      <entry key="M10" value="1.992905508776333" />
+      <entry key="M15" value="1.9952647290545327" />
+      <entry key="M30" value="1.997629555022571" />
+      <entry key="H1" value="1.998814074301404" />
+      <entry key="H2" value="1.99940686124391" />
+      <entry key="H4" value="1.99970338663221" />
+      <entry key="D1" value="1.9999505583279071" />
+      <entry key="W1" value="1.99999293675432" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.9395227492140118" />
+      <entry key="MS500" value="0.9877713544302928" />
+      <entry key="S2" value="1.1111542240908747" />
+      <entry key="S5" value="1.4186770693437238" />
+      <entry key="S10" value="1.6473917602451282" />
+      <entry key="S30" value="1.8651486739147194" />
+      <entry key="S60" value="1.9301414829001409" />
+      <entry key="M2" value="1.9644403426913746" />
+      <entry key="M5" value="1.9856219083640623" />
+      <entry key="M10" value="1.9927850009839834" />
+      <entry key="M15" value="1.9951842147332928" />
+      <entry key="M30" value="1.99758920975498" />
+      <entry key="H1" value="1.9987938796013247" />
+      <entry key="H2" value="1.9993967583723498" />
+      <entry key="H4" value="1.9996983338154306" />
+      <entry key="D1" value="1.999949715999919" />
+      <entry key="W1" value="1.9999928164170513" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3KQ5flgyxhoELFbGSaH5CXNtSZM" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "services/identity-service",
+    "junie.onboarding.icon.badge.shown": "true",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "/Users/sumanyadav/Desktop/PROJECT/Conflux/services",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "project.structure.last.edited": "Modules",
+    "project.structure.proportion": "0.15",
+    "project.structure.side.proportion": "0.2",
+    "settings.editor.selected.configurable": "com.github.continuedev.continueintellijextension.services.ContinueExtensionConfigurable",
+    "to.speed.mode.migration.done": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Spring Boot.IdentityServiceApplication">
+    <configuration name="CollaborationServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+      <module name="collaboration-service" />
+      <option name="SPRING_BOOT_MAIN_CLASS" value="com.conflux.collaboration_service.CollaborationServiceApplication" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="IdentityServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+      <module name="identity-service" />
+      <option name="SPRING_BOOT_MAIN_CLASS" value="com.conflux.identityservice.IdentityServiceApplication" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-37e91769500f-intellij.indexing.shared.core-IU-261.27258.48" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="96a3106f-624f-4655-9032-d8a4aa2f1677" name="Changes" comment="" />
+      <created>1780677167621</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1780677167621</updated>
+      <workItem from="1791477058025" duration="4334000" />
+    </task>
+    <servers />
+  </component>
+</project>

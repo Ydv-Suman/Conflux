@@ -274,6 +274,23 @@ The update endpoint intentionally does not change email addresses or passwords. 
 
 The public endpoints are limited to `POST` requests for registration, email verification, login, refresh, and logout. All other routes require authentication by default.
 
+## Teams and capabilities
+
+Team roles reuse the existing hierarchy: `ADMIN`, `TEAM_LEAD`, `SENIOR_DEVELOPER`, `DEVELOPER`, and `VIEWER`. Roles belong to a team membership rather than globally to a user. Authorization is based on centralized capabilities so business services do not duplicate role-name checks.
+
+All team routes derive the acting user from the validated JWT subject:
+
+- `POST /api/teams` creates a team and atomically assigns its creator as `ADMIN`.
+- `GET /api/teams` lists only the authenticated user's teams.
+- `GET /api/teams/{teamId}` returns a team only to one of its members.
+- `GET /api/teams/{teamId}/members` lists members for an authorized team member.
+- `POST /api/teams/{teamId}/members` adds a verified user by email when the actor can manage members.
+- `PUT /api/teams/{teamId}/members/{memberId}/role` changes a role within the actor's authority.
+- `DELETE /api/teams/{teamId}/members/{memberId}` removes a member within the actor's authority.
+- `GET /api/teams/{teamId}/capabilities/me` returns the authenticated user's current team capabilities.
+
+Membership mutations are rate-limited and audited. A `TEAM_LEAD` cannot assign or modify `ADMIN` or peer roles, and the final `ADMIN` cannot be removed, demoted, or delete their account until administration is transferred.
+
 ## Run
 
 ```bash
