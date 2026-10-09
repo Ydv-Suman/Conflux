@@ -3,6 +3,8 @@ package com.conflux.workspaceservice.shared.exception;
 import com.conflux.workspaceservice.project.exception.ProjectConflictException;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.shared.dto.ErrorResponseDto;
+import com.conflux.workspaceservice.workstream.exception.WorkstreamConflictException;
+import com.conflux.workspaceservice.workstream.exception.WorkstreamNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProjectConflictException.class)
     public ResponseEntity<ErrorResponseDto> handleProjectConflict(
             ProjectConflictException exception, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.CONFLICT, exception.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(WorkstreamNotFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleWorkstreamNotFound(
+            WorkstreamNotFoundException exception, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.NOT_FOUND, exception.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(WorkstreamConflictException.class)
+    public ResponseEntity<ErrorResponseDto> handleWorkstreamConflict(
+            WorkstreamConflictException exception, HttpServletRequest request) {
         return buildErrorResponse(HttpStatus.CONFLICT, exception.getMessage(), request.getRequestURI());
     }
 
