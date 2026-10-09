@@ -13,13 +13,13 @@ const socialClass = `
   border border-[#c9c9c1] bg-[#fffefa] font-semibold text-[#252925]
   transition duration-200 hover:border-[#8d938b] hover:bg-[#f4f4ee]
   active:translate-y-px focus-visible:outline-3 focus-visible:outline-offset-3
-  focus-visible:outline-[#39715b]/25
+  focus-visible:outline-[#66707c]/25
 `;
 
 export const loginView = () =>
   authShell(`
   <div class="w-full max-w-[510px]">
-    <h2 class="mb-8 text-center text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em]" id="login-title">
+    <h2 class="mb-8 text-center text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em] text-[#111317]" id="login-title">
       Welcome back
     </h2>
 
@@ -73,7 +73,7 @@ export const loginView = () =>
 
     <p class="mb-0 mt-7 text-center text-sm text-[#6d716b]">
       New to Conflux?
-      <a class="font-bold text-[#234a3a] underline underline-offset-3" href="/sign-up" data-link>Sign up</a>
+      <a class="font-bold text-[#414851] underline underline-offset-3" href="/sign-up" data-link>Sign up</a>
     </p>
   </div>
 `);
