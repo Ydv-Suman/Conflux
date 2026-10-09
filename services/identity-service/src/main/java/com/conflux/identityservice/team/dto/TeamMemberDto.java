@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record TeamMemberDto(
         UUID userId,
+        String fullName,
         String username,
         UserRole role,
         Instant joinedAt) {

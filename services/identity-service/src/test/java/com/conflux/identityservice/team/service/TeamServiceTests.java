@@ -3,6 +3,7 @@ package com.conflux.identityservice.team.service;
 import com.conflux.identityservice.team.entity.Team;
 import com.conflux.identityservice.team.entity.TeamMember;
 import com.conflux.identityservice.team.dto.TeamMemberDto;
+import com.conflux.identityservice.team.dto.UpdateTeamRequestDto;
 import com.conflux.identityservice.team.exception.TeamAccessDeniedException;
 import com.conflux.identityservice.team.exception.TeamNotFoundException;
 import com.conflux.identityservice.user.entity.User;
@@ -20,6 +21,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TeamServiceTests {
@@ -85,5 +88,27 @@ class TeamServiceTests {
 
         assertThrows(TeamNotFoundException.class,
                 () -> service.listMembers(actorId, teamId));
+    }
+
+    @Test
+    void developerCannotUpdateTeamData() {
+        UUID teamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Team team = new Team();
+        team.setTeamId(teamId);
+        User actor = new User();
+        actor.setUserId(actorId);
+        TeamMember membership = new TeamMember();
+        membership.setTeam(team);
+        membership.setUser(actor);
+        membership.setRole(UserRole.DEVELOPER);
+        when(members.findAllForUpdate(teamId)).thenReturn(List.of(membership));
+
+        TeamService secureService = new TeamService(
+                teams, members, users, emails, new TeamAuthorizationService(members));
+
+        assertThrows(TeamAccessDeniedException.class,
+                () -> secureService.update(actorId, teamId, new UpdateTeamRequestDto("Renamed")));
+        verify(teams, never()).save(team);
     }
 }

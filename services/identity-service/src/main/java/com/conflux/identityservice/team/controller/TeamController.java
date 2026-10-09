@@ -6,6 +6,7 @@ import com.conflux.identityservice.team.dto.TeamCapabilitiesDto;
 import com.conflux.identityservice.team.dto.TeamDto;
 import com.conflux.identityservice.team.dto.TeamMemberDto;
 import com.conflux.identityservice.team.dto.UpdateTeamMemberRoleRequestDto;
+import com.conflux.identityservice.team.dto.UpdateTeamRequestDto;
 import com.conflux.identityservice.shared.service.RateLimitService;
 import com.conflux.identityservice.team.service.TeamService;
 import jakarta.validation.Valid;
@@ -54,6 +55,16 @@ public class TeamController {
     @GetMapping(path = "/{teamId}", version = "1.0")
     public TeamDto get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID teamId) {
         return teams.get(userId(jwt), teamId);
+    }
+
+    @PutMapping(path = "/{teamId}", version = "1.0")
+    public TeamDto update(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID teamId,
+            @Valid @RequestBody UpdateTeamRequestDto request) {
+        UUID actorId = userId(jwt);
+        rateLimits.checkTeamMutation(actorId);
+        return teams.update(actorId, teamId, request);
     }
 
     @GetMapping(path = "/{teamId}/members", version = "1.0")
