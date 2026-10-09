@@ -27,6 +27,10 @@ class TeamAuthorizationServiceTests {
                 java.util.EnumSet.allOf(Capability.class)));
         assertTrue(authorization.capabilities(UserRole.DEVELOPER).contains(Capability.EDIT_DOCUMENT));
         assertFalse(authorization.capabilities(UserRole.VIEWER).contains(Capability.EDIT_DOCUMENT));
+        assertTrue(authorization.capabilities(UserRole.ADMIN).contains(Capability.MANAGE_TEAM));
+        assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_TEAM));
+        assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_MEMBERS));
+        assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_ROLES));
     }
 
     @Test

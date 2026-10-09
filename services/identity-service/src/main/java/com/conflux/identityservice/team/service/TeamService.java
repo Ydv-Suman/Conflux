@@ -5,6 +5,7 @@ import com.conflux.identityservice.team.dto.CreateTeamRequestDto;
 import com.conflux.identityservice.team.dto.TeamCapabilitiesDto;
 import com.conflux.identityservice.team.dto.TeamDto;
 import com.conflux.identityservice.team.dto.TeamMemberDto;
+import com.conflux.identityservice.team.dto.UpdateTeamRequestDto;
 import com.conflux.identityservice.team.entity.Capability;
 import com.conflux.identityservice.team.entity.Team;
 import com.conflux.identityservice.team.entity.TeamMember;
@@ -80,6 +81,19 @@ public class TeamService {
     public TeamDto get(UUID actorId, UUID teamId) {
         TeamMember member = authorization.requireMember(teamId, actorId);
         return toDto(member.getTeam(), member.getRole());
+    }
+
+    @Transactional
+    public TeamDto update(UUID actorId, UUID teamId, UpdateTeamRequestDto request) {
+        List<TeamMember> lockedMembers = members.findAllForUpdate(teamId);
+        TeamMember actor = findMember(lockedMembers, actorId);
+        authorization.requireCapability(actor, Capability.MANAGE_TEAM);
+
+        Team team = teams.findById(teamId).orElseThrow(TeamNotFoundException::new);
+        team.setName(request.name());
+        teams.save(team);
+        LOGGER.info("event=TEAM_UPDATED team_id={} actor_id={}", teamId, actorId);
+        return toDto(team, actor.getRole());
     }
 
     @Transactional(readOnly = true)
@@ -209,7 +223,13 @@ public class TeamService {
 
     private TeamMemberDto toMemberDto(TeamMember member) {
         User user = member.getUser();
-        return new TeamMemberDto(user.getUserId(), user.getUsername(),
+        return new TeamMemberDto(user.getUserId(), fullName(user), user.getUsername(),
                 member.getRole(), member.getJoinedAt());
+    }
+
+    private String fullName(User user) {
+        return java.util.stream.Stream.of(user.getFirstName(), user.getMiddleName(), user.getLastName())
+                .filter(part -> part != null && !part.isBlank())
+                .collect(java.util.stream.Collectors.joining(" "));
     }
 }

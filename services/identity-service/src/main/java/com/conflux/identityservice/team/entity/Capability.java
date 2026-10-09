@@ -7,6 +7,7 @@ public enum Capability {
     JOIN_WORKSTREAM,
     EDIT_DOCUMENT,
     APPROVE_CHANGE,
+    MANAGE_TEAM,
     MANAGE_MEMBERS,
     MANAGE_ROLES
 }
