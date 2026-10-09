@@ -8,7 +8,7 @@ import {
 
 export const registrationView = () => authShell(`
   <div class="w-full max-w-[550px]">
-    <h2 class="m-0 text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em]" id="register-title">
+    <h2 class="m-0 text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em] text-[#111317]" id="register-title">
       Create your account
     </h2>
     <p class="mb-8 mt-3 text-sm text-[#6d716b]">Join Conflux and start building together.</p>
@@ -67,7 +67,7 @@ export const registrationView = () => authShell(`
 
     <p class="mb-0 mt-7 text-center text-sm text-[#6d716b]">
       Already have an account?
-      <a class="font-bold text-[#234a3a] underline underline-offset-3" href="/" data-link>Log in</a>
+      <a class="font-bold text-[#414851] underline underline-offset-3" href="/" data-link>Log in</a>
     </p>
   </div>
 `);

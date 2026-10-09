@@ -23,7 +23,7 @@ const icon = (kind: StatusOptions["icon"]) => {
   const color =
     kind === "error"
       ? "bg-[#f3e5e2] text-[#8a3f39]"
-      : "bg-[#e1e9df] text-[#234a3a]";
+      : "bg-[#e8e9e7] text-[#414851]";
 
   return `
     <span class="mx-auto mb-6 grid size-[72px] place-items-center rounded-full ${color}" aria-hidden="true">
@@ -40,14 +40,14 @@ const icon = (kind: StatusOptions["icon"]) => {
 
 export const statusView = (options: StatusOptions) => `
   <div class="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-[#efede6] p-[clamp(26px,5vw,52px)]">
-    <img class="mx-auto h-14 w-auto brightness-0" src="${logoUrl}" alt="Conflux">
+    <img class="mx-auto size-16 object-cover" src="${logoUrl}" alt="Conflux">
     <section
       class="w-full max-w-[480px] place-self-center border border-[#d2d0c7]
         bg-[#faf9f4] p-[clamp(34px,7vw,60px)] text-center
         shadow-[0_24px_70px_-52px_rgba(27,35,30,.5)]"
     >
       ${icon(options.icon)}
-      <p class="mb-3 font-mono text-[10px] font-bold tracking-[.12em] text-[#39715b]">EMAIL VERIFICATION</p>
+      <p class="mb-3 font-mono text-[10px] font-bold tracking-[.12em] text-[#59616c]">EMAIL VERIFICATION</p>
       <h1 class="m-0 text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em]">${options.title}</h1>
       <p class="mx-auto mb-7 mt-4 max-w-[37ch] text-sm leading-relaxed text-[#6d716b]">${options.body}</p>
       ${options.action ?? ""}
@@ -69,7 +69,7 @@ export const checkEmailAction = (email: string) => `
     </label>
     <button class="${secondaryClass}" type="submit" data-label="Resend email">Resend email</button>
     <a
-      class="text-center text-sm font-semibold text-[#234a3a] underline underline-offset-3"
+      class="text-center text-sm font-semibold text-[#414851] underline underline-offset-3"
       href="/"
       data-link
     >

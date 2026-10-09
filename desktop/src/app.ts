@@ -22,6 +22,29 @@ import {
   settingsView,
 } from './views/home';
 import { escapeHtml } from './html';
+import {
+  addTeamMember,
+  createTeam,
+  getMyTeamCapabilities,
+  getTeam,
+  listTeamMembers,
+  listTeams,
+  removeTeamMember,
+  updateTeam,
+  updateTeamMemberRole,
+  type Team,
+  type TeamCapabilities,
+  type TeamMember,
+  type UserRole,
+} from './features/teams/api';
+import {
+  createTeamPanelView,
+  teamSettingsView,
+  teamsErrorView,
+  teamsLoadingView,
+  teamsView,
+  type TeamSection,
+} from './features/teams/view';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('App root is missing');
@@ -40,8 +63,8 @@ const showMessage = (message: string, type: 'error' | 'success' = 'error') => {
   output.classList.remove('hidden');
   if (type === 'success') {
     output.className = `
-      border-l-3 border-[#39715b] bg-[#e9f1ec] px-3 py-2
-      text-xs leading-relaxed text-[#285442]
+      border-l-3 border-[#66707c] bg-[#e8e9e7] px-3 py-2
+      text-xs leading-relaxed text-[#414851]
     `;
   }
 };
@@ -62,7 +85,7 @@ const confirmAction = (title: string, message: string, confirmLabel: string) => 
         <p class="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="confirmation-message">${escapeHtml(message)}</p>
         <div class="grid grid-cols-2 gap-3">
           <button class="neutral-button" id="confirmation-cancel" type="button">Cancel</button>
-          <button class="min-h-11 border border-[#a54d45] bg-[#a54d45] px-4 text-sm font-semibold text-white transition hover:bg-[#873d37] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a54d45]" id="confirmation-confirm" type="button">${escapeHtml(confirmLabel)}</button>
+          <button class="danger-button" id="confirmation-confirm" type="button">${escapeHtml(confirmLabel)}</button>
         </div>
       </section>
     </div>`);
@@ -211,37 +234,57 @@ const bindLogout = () => {
 const closeAccountPanel = () => {
   document.querySelector('#account-panel')?.classList.add('hidden');
   document.querySelector('#profile-popover')?.classList.add('hidden');
+  document.querySelector('.app-workspace')?.classList.remove('activity-panel-open');
   document.querySelector('#account-backdrop')?.classList.add('hidden');
   document.querySelectorAll('.rail-button').forEach((button) => {
     button.setAttribute('aria-pressed', 'false');
   });
 };
 
-const showAccountPanel = (content: string, activeButton: string) => {
-  const panel = document.querySelector<HTMLElement>('#account-panel');
-  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
-  if (!panel || !backdrop) return;
-  document.querySelector('#profile-popover')?.classList.add('hidden');
-  panel.innerHTML = content;
+const closeDialog = () => {
+  document.querySelector('#account-panel')?.classList.add('hidden');
+  document.querySelector('#account-backdrop')?.classList.add('hidden');
+};
+
+const showProfilePanel = (content: string, activeButton = 'profile-button') => {
+  const panel = document.querySelector<HTMLElement>('#profile-popover');
+  if (!panel) return;
+  document.querySelector('#account-panel')?.classList.add('hidden');
+  document.querySelector('#account-backdrop')?.classList.add('hidden');
+  panel.innerHTML = `<div class="activity-panel-surface">${content}</div><button class="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" id="activity-panel-resizer" type="button" aria-label="Resize activity panel" title="Drag to resize"></button>`;
   panel.classList.remove('hidden');
-  backdrop.classList.remove('hidden');
+  document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
+  bindActivityPanelResize();
   document.querySelectorAll('.rail-button').forEach((button) => {
     button.setAttribute('aria-pressed', String(button.id === activeButton));
   });
   panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeAccountPanel);
 };
 
-const showProfilePanel = (content: string) => {
-  const panel = document.querySelector<HTMLElement>('#profile-popover');
-  if (!panel) return;
-  document.querySelector('#account-panel')?.classList.add('hidden');
-  document.querySelector('#account-backdrop')?.classList.add('hidden');
-  panel.innerHTML = content;
+const showTeamSettingsPanel = (
+  team: Team,
+  members: TeamMember[],
+  capabilities: TeamCapabilities,
+) => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = teamSettingsView(team, members, capabilities);
   panel.classList.remove('hidden');
-  document.querySelectorAll('.rail-button').forEach((button) => {
-    button.setAttribute('aria-pressed', String(button.id === 'profile-button'));
-  });
-  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeAccountPanel);
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  bindTeamAdminControls(team, members);
+};
+
+const showCreateTeamPanel = () => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = createTeamPanelView;
+  panel.classList.remove('hidden');
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  bindCreateTeamForms(panel);
 };
 
 const bindDeleteAccount = () => {
@@ -276,6 +319,8 @@ const bindThemeToggle = () => {
   const updateLabel = () => {
     const theme = document.documentElement.dataset.theme === 'dark' ? 'Dark' : 'Light';
     if (button) button.ariaLabel = `Switch to ${theme === 'Dark' ? 'light' : 'dark'} theme`;
+    const label = button?.querySelector<HTMLElement>('.theme-label');
+    if (label) label.textContent = `${theme} mode`;
   };
   updateLabel();
   button?.addEventListener('click', () => {
@@ -315,8 +360,45 @@ const bindProfileForm = (originalProfile: UserProfile) => {
   });
 };
 
+const bindActivityPanelResize = () => {
+  const handle = document.querySelector<HTMLButtonElement>('#activity-panel-resizer');
+  const shell = document.querySelector<HTMLElement>('.app-workspace');
+  if (!handle || !shell || handle.dataset.bound) return;
+  handle.dataset.bound = 'true';
+
+  const setWidth = (width: number) => {
+    const bounded = Math.min(520, Math.max(240, width));
+    shell.style.setProperty('--activity-panel-width', `${bounded}px`);
+    localStorage.setItem('activityPanelWidth', String(bounded));
+  };
+  const resize = (event: PointerEvent) => setWidth(event.clientX - 52);
+  const stop = () => {
+    document.removeEventListener('pointermove', resize);
+    document.removeEventListener('pointerup', stop);
+  };
+  handle.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    document.addEventListener('pointermove', resize);
+    document.addEventListener('pointerup', stop);
+  });
+  handle.addEventListener('keydown', (event) => {
+    const current = Number.parseInt(
+      getComputedStyle(shell).getPropertyValue('--activity-panel-width'),
+      10,
+    ) || 300;
+    if (event.key === 'ArrowLeft') setWidth(current - 20);
+    if (event.key === 'ArrowRight') setWidth(current + 20);
+  });
+};
+
 const bindAccountControls = () => {
-  document.querySelector('#account-backdrop')?.addEventListener('click', closeAccountPanel);
+  const savedPanelWidth = Number(localStorage.getItem('activityPanelWidth'));
+  const shell = document.querySelector<HTMLElement>('.app-workspace');
+  if (shell && savedPanelWidth >= 240 && savedPanelWidth <= 520) {
+    shell.style.setProperty('--activity-panel-width', `${savedPanelWidth}px`);
+  }
+  bindActivityPanelResize();
+  document.querySelector('#account-backdrop')?.addEventListener('click', closeDialog);
   document.querySelector('#profile-button')?.addEventListener('click', async () => {
     showProfilePanel(profileLoadingView);
     try {
@@ -328,9 +410,230 @@ const bindAccountControls = () => {
     }
   });
   document.querySelector('#settings-button')?.addEventListener('click', () => {
-    showAccountPanel(settingsView, 'settings-button');
+    showProfilePanel(settingsView, 'settings-button');
     bindThemeToggle();
   });
+  document.querySelector('#teams-button')?.addEventListener('click', () => {
+    closeDialog();
+    document.querySelector('#profile-popover')?.classList.remove('hidden');
+    document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
+    document.querySelector('#teams-button')?.setAttribute('aria-pressed', 'true');
+    void loadTeamWorkspace();
+  });
+};
+
+let activeTeamId: string | null = null;
+let activeTeamSection: TeamSection = 'all-teams';
+let teamsExpanded = false;
+
+const setTeamWorkspace = (content: string) => {
+  const workspace = document.querySelector<HTMLElement>('#team-workspace');
+  if (!workspace) return;
+  const template = document.createElement('template');
+  template.innerHTML = content;
+  const sidebar = template.content.querySelector<HTMLElement>('.team-sidebar');
+  const teamContent = template.content.querySelector<HTMLElement>('.team-content');
+  const activityPanel = document.querySelector<HTMLElement>('#profile-popover');
+  if (sidebar && teamContent && activityPanel) {
+    activityPanel.innerHTML = `<div class="activity-panel-surface">${sidebar.outerHTML}</div><button class="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" id="activity-panel-resizer" type="button" aria-label="Resize activity panel" title="Drag to resize"></button>`;
+    workspace.innerHTML = teamContent.outerHTML;
+    activityPanel.classList.remove('hidden');
+    document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
+    bindActivityPanelResize();
+    return;
+  }
+  workspace.innerHTML = content;
+};
+
+const showTeamFormError = (selector: string, error: unknown) => {
+  const output = document.querySelector<HTMLOutputElement>(selector);
+  if (!output) return;
+  output.textContent = error instanceof Error ? error.message : 'The request could not be completed.';
+  output.classList.remove('hidden');
+};
+
+const bindCreateTeamForms = (root: ParentNode) => {
+  root.querySelectorAll<HTMLFormElement>('[data-create-team-form]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setSubmitting(form, true);
+      try {
+        const created = await createTeam(String(new FormData(form).get('name')));
+        closeDialog();
+        await loadTeamWorkspace(created.teamId);
+      } catch (error) {
+        const output = form.querySelector<HTMLOutputElement>('[data-team-create-message]');
+        if (output) {
+          output.textContent = error instanceof Error ? error.message : 'Unable to create this team.';
+          output.classList.remove('hidden');
+        }
+        setSubmitting(form, false);
+      }
+    });
+  });
+};
+
+const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
+  const updateTeamForm = document.querySelector<HTMLFormElement>('#update-team-form');
+  updateTeamForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setSubmitting(updateTeamForm, true);
+    try {
+      await updateTeam(selected.teamId, String(new FormData(updateTeamForm).get('name')));
+      closeDialog();
+      await loadTeamWorkspace(selected.teamId);
+    } catch (error) {
+      showTeamFormError('#update-team-message', error);
+      setSubmitting(updateTeamForm, false);
+    }
+  });
+
+  const addMemberForm = document.querySelector<HTMLFormElement>('#add-team-member-form');
+  addMemberForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setSubmitting(addMemberForm, true);
+    const data = new FormData(addMemberForm);
+    try {
+      await addTeamMember(selected.teamId, String(data.get('email')), String(data.get('role')) as UserRole);
+      closeDialog();
+      await loadTeamWorkspace(selected.teamId);
+    } catch (error) {
+      showTeamFormError('#team-form-message', error);
+      setSubmitting(addMemberForm, false);
+    }
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.edit-member-role').forEach((button) => {
+    button.addEventListener('click', () => {
+      const select = button.closest<HTMLElement>('[data-member-id]')
+        ?.querySelector<HTMLSelectElement>('.member-role');
+      if (!select) return;
+      const opening = select.classList.contains('hidden');
+      select.classList.toggle('hidden', !opening);
+      button.setAttribute('aria-expanded', String(opening));
+      if (opening) select.focus();
+    });
+  });
+
+  document.querySelectorAll<HTMLSelectElement>('.member-role').forEach((select) => {
+    select.addEventListener('change', async () => {
+      const row = select.closest<HTMLElement>('[data-member-id]');
+      const member = members.find((candidate) => candidate.userId === row?.dataset.memberId);
+      if (!member) return;
+      select.disabled = true;
+      try {
+        await updateTeamMemberRole(selected.teamId, member.userId, select.value as UserRole);
+        closeDialog();
+        await loadTeamWorkspace(selected.teamId);
+      } catch (error) {
+        select.value = member.role;
+        select.disabled = false;
+        showTeamFormError('#team-settings-message', error);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.remove-member').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const row = button.closest<HTMLElement>('[data-member-id]');
+      const member = members.find((candidate) => candidate.userId === row?.dataset.memberId);
+      if (!member) return;
+      const confirmed = await confirmAction(
+        'Remove team member?',
+        `Remove @${member.username} from ${selected.name}?`,
+        'Remove member',
+      );
+      if (!confirmed) return;
+      button.disabled = true;
+      try {
+        await removeTeamMember(selected.teamId, member.userId);
+        closeDialog();
+        await loadTeamWorkspace(selected.teamId);
+      } catch (error) {
+        button.disabled = false;
+        showTeamFormError('#team-settings-message', error);
+      }
+    });
+  });
+};
+
+const bindTeamWorkspace = (
+  selected: Team | null,
+  members: TeamMember[],
+  capabilities: TeamCapabilities | null,
+) => {
+  document.querySelectorAll<HTMLButtonElement>('.team-switch').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeTeamSection = 'members';
+      teamsExpanded = true;
+      void loadTeamWorkspace(button.dataset.teamId ?? null);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-team-section]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const section = button.dataset.teamSection as TeamSection;
+      if (section === 'all-teams') {
+        teamsExpanded = !teamsExpanded;
+        button.setAttribute('aria-expanded', String(teamsExpanded));
+        button.querySelector('.team-list-chevron')?.classList.toggle('rotate-90', teamsExpanded);
+        const teamList = document.querySelector<HTMLElement>('.team-list');
+        teamList?.classList.toggle('hidden', !teamsExpanded);
+        teamList?.classList.toggle('grid', teamsExpanded);
+        return;
+      }
+      activeTeamSection = section;
+      void loadTeamWorkspace(selected?.teamId ?? null);
+    });
+  });
+
+  document.querySelector('#open-team-settings')?.addEventListener('click', () => {
+    if (selected && capabilities) showTeamSettingsPanel(selected, members, capabilities);
+  });
+
+  document.querySelector('#open-create-team')?.addEventListener('click', showCreateTeamPanel);
+
+  document.querySelector('#close-team-detail')?.addEventListener('click', () => {
+    activeTeamSection = 'all-teams';
+    void loadTeamWorkspace(selected?.teamId ?? null);
+  });
+};
+
+const loadTeamWorkspace = async (preferredTeamId: string | null = activeTeamId) => {
+  if (!document.querySelector('#team-workspace .team-content')) {
+    setTeamWorkspace(teamsLoadingView);
+  }
+  try {
+    const teams = await listTeams();
+    const selectedId = teams.some((team) => team.teamId === preferredTeamId)
+      ? preferredTeamId
+      : teams[0]?.teamId ?? null;
+    activeTeamId = selectedId;
+
+    if (!selectedId) {
+      setTeamWorkspace(teamsView(teams, null, [], null, activeTeamSection, teamsExpanded));
+      bindTeamWorkspace(null, [], null);
+      return;
+    }
+
+    const [selected, members, capabilities] = await Promise.all([
+      getTeam(selectedId),
+      listTeamMembers(selectedId),
+      getMyTeamCapabilities(selectedId),
+    ]);
+    setTeamWorkspace(teamsView(
+      teams,
+      selected,
+      members,
+      capabilities,
+      activeTeamSection,
+      teamsExpanded,
+    ));
+    bindTeamWorkspace(selected, members, capabilities);
+  } catch (error) {
+    setTeamWorkspace(teamsErrorView(error instanceof Error ? error.message : 'Unable to load teams.'));
+    document.querySelector('#retry-teams')?.addEventListener('click', () => void loadTeamWorkspace());
+  }
 };
 
 const bindLogoutFailure = () => {
@@ -428,9 +731,10 @@ const render = () => {
       setRoute('/');
       return;
     }
-    app.innerHTML = homeView(user);
+    app.innerHTML = homeView();
     bindLogout();
     bindAccountControls();
+    void loadTeamWorkspace();
   } else {
     if (isAuthenticated()) {
       setRoute('/app');
