@@ -38,6 +38,7 @@ jobs:
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/identityDB
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: identity123
+      INTERNAL_GRPC_TOKEN: ci-only-internal-grpc-token-32-chars
     steps:
       - uses: actions/checkout@v7
 

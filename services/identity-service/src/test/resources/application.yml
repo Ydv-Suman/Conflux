@@ -12,6 +12,9 @@ spring:
     host: localhost
   jpa:
     open-in-view: false
+  grpc:
+    server:
+      port: 0
 
 app:
   cors:
@@ -29,6 +32,8 @@ app:
     refresh-ttl: 30d
     public-key: classpath:jwt-public.pem
     private-key: classpath:jwt-private.pem
+  grpc:
+    internal-token: test-internal-service-token-32-characters
 
 server:
   forward-headers-strategy: none
