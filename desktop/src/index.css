@@ -18,6 +18,12 @@
     color: #1d211e;
     font-family: var(--font-sans);
     text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100dvh;
+    overflow: hidden;
   }
 
   button,
@@ -30,8 +36,11 @@
   .app-workspace { padding-left: 3rem; transition: padding-left 180ms cubic-bezier(.16, 1, .3, 1); }
   .app-workspace.activity-panel-open { padding-left: calc(3.25rem + var(--activity-panel-width)); }
   .activity-panel { width: var(--activity-panel-width); overflow: hidden !important; border-radius: 1rem !important; clip-path: inset(0 round 1rem); }
-  .activity-panel-surface { min-height: 100%; overflow-y: auto; border-radius: 1rem; background: inherit; }
-  .activity-panel-resizer { background: transparent; touch-action: none; transition: background-color 160ms; }
+  .activity-panel-surface { min-height: 100%; overflow-y: auto; border-radius: 1rem; background: inherit; scrollbar-width: none; }
+  .activity-panel-surface::-webkit-scrollbar { display: none; }
+  .editor-stage { max-height: calc(100dvh - .5rem); overflow-y: auto; scrollbar-width: none; }
+  .editor-stage::-webkit-scrollbar { display: none; }
+  .activity-panel-resizer { appearance: none; border: 0; background: transparent; padding: 0; box-shadow: none; touch-action: none; transition: background-color 160ms; }
   .activity-panel-resizer:hover, .activity-panel-resizer:focus-visible { background: #66707c; outline: none; }
   .rail-button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #6d716b; transition: color 180ms, background-color 180ms, transform 180ms; }
   .rail-button:hover, .rail-button[aria-pressed="true"] { background: #dedcd4; color: #1d211e; }

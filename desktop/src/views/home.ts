@@ -4,7 +4,7 @@ import { escapeHtml } from '../html';
 
 export const homeView = () => `
   <main class="app-workspace activity-panel-open min-h-dvh bg-[#f8f7f2]" style="--activity-panel-width: 300px">
-    <section class="editor-stage m-1 min-h-[calc(100dvh-.5rem)] overflow-hidden rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
+    <section class="editor-stage m-1 min-h-[calc(100dvh-.5rem)] rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
       <div class="mx-auto w-full max-w-[1400px]">
         <div id="team-workspace"></div>
         <output id="form-message" class="mt-4 hidden border-l-3 border-[#a54d45] bg-[#f8eae7] px-3 py-2 text-xs text-[#7f342e]" role="alert"></output>
