@@ -69,6 +69,8 @@ AUTH_SECURE_COOKIES=false
 AUTH_COOKIE_SAME_SITE=Strict
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 FORWARD_HEADERS_STRATEGY=none
+GRPC_SERVER_PORT=9090
+INTERNAL_GRPC_TOKEN=replace-with-at-least-32-random-characters
 ```
 
 Use the SMTP login and SMTP key from Brevo, not the Brevo account password or API key.
@@ -273,6 +275,34 @@ Content-Type: application/json
 The update endpoint intentionally does not change email addresses or passwords. Those operations require separate verification and credential-confirmation flows. User read, update, and delete operations use parameterized SQL queries through Spring `JdbcClient`.
 
 The public endpoints are limited to `POST` requests for registration, email verification, login, refresh, and logout. All other routes require authentication by default.
+
+## Internal gRPC authorization
+
+Identity Service exposes an internal gRPC server on port `9090` by default. Its first versioned contract is defined in:
+
+```text
+src/main/proto/team_authorization.proto
+```
+
+The `conflux.identity.v1.TeamAuthorization/GetMembership` method accepts a user UUID and team UUID, then returns only:
+
+- whether the user is currently a member
+- the verified team role
+- the capabilities derived by Identity Service
+
+It does not return profile, email, credential, or session data. Non-members receive `is_member = false` with no role or capabilities.
+
+Every gRPC request requires this metadata header:
+
+```text
+x-conflux-internal-token: <INTERNAL_GRPC_TOKEN>
+```
+
+The token must contain at least 32 characters, is compared in constant time, and is separate from user JWTs. Missing or invalid service credentials return `UNAUTHENTICATED`. Store the production value in the deployment secret manager and give it only to authorized internal callers.
+
+The shared token protects application-level access but does not encrypt transport. Production deployment must place the gRPC port on a private network and enable TLS or mTLS before exposing it between hosts. Do not expose port `9090` through the public API gateway.
+
+The gRPC server uses random ports during tests so parallel Spring test contexts cannot collide.
 
 ## Teams and capabilities
 
