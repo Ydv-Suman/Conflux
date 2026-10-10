@@ -31,6 +31,9 @@ public class Team {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
+    @Column(name = "description", length = 500)
+    private String description;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;

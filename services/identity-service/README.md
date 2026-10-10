@@ -313,6 +313,7 @@ All team routes derive the acting user from the validated JWT subject:
 - `POST /api/teams` creates a team and atomically assigns its creator as `ADMIN`.
 - `GET /api/teams` lists only the authenticated user's teams.
 - `GET /api/teams/{teamId}` returns a team only to one of its members.
+- `PUT /api/teams/{teamId}` updates the team name and optional description when the actor can manage the team.
 - `GET /api/teams/{teamId}/members` lists members for an authorized team member.
 - `POST /api/teams/{teamId}/members` adds a verified user by email when the actor can manage members.
 - `PUT /api/teams/{teamId}/members/{memberId}/role` changes a role within the actor's authority.
@@ -320,6 +321,8 @@ All team routes derive the acting user from the validated JWT subject:
 - `GET /api/teams/{teamId}/capabilities/me` returns the authenticated user's current team capabilities.
 
 Membership mutations are rate-limited and audited. A `TEAM_LEAD` cannot assign or modify `ADMIN` or peer roles, and the final `ADMIN` cannot be removed, demoted, or delete their account until administration is transferred.
+
+Create and update requests accept a required `name` of up to 100 characters and an optional `description` of up to 500 characters. Blank descriptions are stored as `null`.
 
 ## Run
 
