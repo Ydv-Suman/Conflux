@@ -40,11 +40,26 @@ import {
 import {
   createTeamPanelView,
   teamSettingsView,
-  teamsErrorView,
-  teamsLoadingView,
-  teamsView,
-  type TeamSection,
 } from './features/teams/view';
+import {
+  assignProjectTeam,
+  createWorkstream,
+  createProject,
+  listProjectTeams,
+  listProjects,
+  listWorkstreams,
+  updateProject,
+  type Project,
+  type ProjectTeam,
+  type Workstream,
+} from './features/projects/api';
+import {
+  projectPanelView,
+  projectsErrorView,
+  projectsLoadingView,
+  projectWorkspaceView,
+  workstreamPanelView,
+} from './features/projects/view';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('App root is missing');
@@ -232,6 +247,7 @@ const bindLogout = () => {
 };
 
 const closeAccountPanel = () => {
+  activeActivityPanel = null;
   document.querySelector('#account-panel')?.classList.add('hidden');
   document.querySelector('#profile-popover')?.classList.add('hidden');
   document.querySelector('.app-workspace')?.classList.remove('activity-panel-open');
@@ -249,6 +265,7 @@ const closeDialog = () => {
 const showProfilePanel = (content: string, activeButton = 'profile-button') => {
   const panel = document.querySelector<HTMLElement>('#profile-popover');
   if (!panel) return;
+  activeActivityPanel = activeButton;
   document.querySelector('#account-panel')?.classList.add('hidden');
   document.querySelector('#account-backdrop')?.classList.add('hidden');
   panel.innerHTML = `<div class="activity-panel-surface">${content}</div><button class="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" id="activity-panel-resizer" type="button" aria-label="Resize activity panel" title="Drag to resize"></button>`;
@@ -276,7 +293,7 @@ const showTeamSettingsPanel = (
   bindTeamAdminControls(team, members);
 };
 
-const showCreateTeamPanel = () => {
+const showCreateTeamPanel = (projectId?: string) => {
   const panel = document.querySelector<HTMLElement>('#account-panel');
   const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
   if (!panel || !backdrop) return;
@@ -284,7 +301,29 @@ const showCreateTeamPanel = () => {
   panel.classList.remove('hidden');
   backdrop.classList.remove('hidden');
   panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
-  bindCreateTeamForms(panel);
+  bindCreateTeamForms(panel, projectId);
+};
+
+const showProjectPanel = (project?: Project) => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = projectPanelView(project);
+  panel.classList.remove('hidden');
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  bindProjectForm(panel, project);
+};
+
+const showWorkstreamPanel = (project: Project, team: ProjectTeam) => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = workstreamPanelView(project, team);
+  panel.classList.remove('hidden');
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  bindWorkstreamForm(panel, project, team);
 };
 
 const bindDeleteAccount = () => {
@@ -400,31 +439,47 @@ const bindAccountControls = () => {
   bindActivityPanelResize();
   document.querySelector('#account-backdrop')?.addEventListener('click', closeDialog);
   document.querySelector('#profile-button')?.addEventListener('click', async () => {
+    if (activeActivityPanel === 'profile-button') {
+      closeAccountPanel();
+      return;
+    }
     showProfilePanel(profileLoadingView);
     try {
       const profile = await authenticatedRequest<UserProfile>('/api/users/me', 'GET');
-      showProfile(profile);
+      if (activeActivityPanel === 'profile-button') showProfile(profile);
     } catch (error) {
+      if (activeActivityPanel !== 'profile-button') return;
       const message = escapeHtml(error instanceof Error ? error.message : 'Unable to load your profile.');
       showProfilePanel(`${profileLoadingView}<p class="m-7 text-sm text-[#7f342e]">${message}</p>`);
     }
   });
   document.querySelector('#settings-button')?.addEventListener('click', () => {
+    if (activeActivityPanel === 'settings-button') {
+      closeAccountPanel();
+      return;
+    }
     showProfilePanel(settingsView, 'settings-button');
     bindThemeToggle();
   });
-  document.querySelector('#teams-button')?.addEventListener('click', () => {
+  document.querySelector('#projects-button')?.addEventListener('click', () => {
+    if (activeActivityPanel === 'projects-button') {
+      closeAccountPanel();
+      return;
+    }
+    activeActivityPanel = 'projects-button';
     closeDialog();
     document.querySelector('#profile-popover')?.classList.remove('hidden');
     document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
-    document.querySelector('#teams-button')?.setAttribute('aria-pressed', 'true');
-    void loadTeamWorkspace();
+    document.querySelectorAll('.rail-button').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.id === 'projects-button'));
+    });
+    void loadProjectWorkspace();
   });
 };
 
-let activeTeamId: string | null = null;
-let activeTeamSection: TeamSection = 'all-teams';
-let teamsExpanded = false;
+let activeActivityPanel: string | null = 'projects-button';
+let activeProjectId: string | null = null;
+let activeProjectTeamId: string | null = null;
 
 const setTeamWorkspace = (content: string) => {
   const workspace = document.querySelector<HTMLElement>('#team-workspace');
@@ -437,9 +492,11 @@ const setTeamWorkspace = (content: string) => {
   if (sidebar && teamContent && activityPanel) {
     activityPanel.innerHTML = `<div class="activity-panel-surface">${sidebar.outerHTML}</div><button class="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" id="activity-panel-resizer" type="button" aria-label="Resize activity panel" title="Drag to resize"></button>`;
     workspace.innerHTML = teamContent.outerHTML;
-    activityPanel.classList.remove('hidden');
-    document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
-    bindActivityPanelResize();
+    if (activeActivityPanel === 'projects-button') {
+      activityPanel.classList.remove('hidden');
+      document.querySelector('.app-workspace')?.classList.add('activity-panel-open');
+      bindActivityPanelResize();
+    }
     return;
   }
   workspace.innerHTML = content;
@@ -452,15 +509,20 @@ const showTeamFormError = (selector: string, error: unknown) => {
   output.classList.remove('hidden');
 };
 
-const bindCreateTeamForms = (root: ParentNode) => {
+const bindCreateTeamForms = (root: ParentNode, projectId?: string) => {
   root.querySelectorAll<HTMLFormElement>('[data-create-team-form]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       setSubmitting(form, true);
       try {
-        const created = await createTeam(String(new FormData(form).get('name')));
+        const data = new FormData(form);
+        const created = await createTeam(
+          String(data.get('name')),
+          String(data.get('description') ?? ''),
+        );
+        if (projectId) await assignProjectTeam(projectId, created.teamId);
         closeDialog();
-        await loadTeamWorkspace(created.teamId);
+        await loadProjectWorkspace(projectId ?? activeProjectId, projectId ? created.teamId : activeProjectTeamId);
       } catch (error) {
         const output = form.querySelector<HTMLOutputElement>('[data-team-create-message]');
         if (output) {
@@ -479,9 +541,14 @@ const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
     event.preventDefault();
     setSubmitting(updateTeamForm, true);
     try {
-      await updateTeam(selected.teamId, String(new FormData(updateTeamForm).get('name')));
+      const data = new FormData(updateTeamForm);
+      await updateTeam(
+        selected.teamId,
+        String(data.get('name')),
+        String(data.get('description') ?? ''),
+      );
       closeDialog();
-      await loadTeamWorkspace(selected.teamId);
+      await loadProjectWorkspace(activeProjectId, selected.teamId);
     } catch (error) {
       showTeamFormError('#update-team-message', error);
       setSubmitting(updateTeamForm, false);
@@ -496,7 +563,7 @@ const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
     try {
       await addTeamMember(selected.teamId, String(data.get('email')), String(data.get('role')) as UserRole);
       closeDialog();
-      await loadTeamWorkspace(selected.teamId);
+      await loadProjectWorkspace(activeProjectId, selected.teamId);
     } catch (error) {
       showTeamFormError('#team-form-message', error);
       setSubmitting(addMemberForm, false);
@@ -524,7 +591,7 @@ const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
       try {
         await updateTeamMemberRole(selected.teamId, member.userId, select.value as UserRole);
         closeDialog();
-        await loadTeamWorkspace(selected.teamId);
+        await loadProjectWorkspace(activeProjectId, selected.teamId);
       } catch (error) {
         select.value = member.role;
         select.disabled = false;
@@ -548,7 +615,7 @@ const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
       try {
         await removeTeamMember(selected.teamId, member.userId);
         closeDialog();
-        await loadTeamWorkspace(selected.teamId);
+        await loadProjectWorkspace(activeProjectId, selected.teamId);
       } catch (error) {
         button.disabled = false;
         showTeamFormError('#team-settings-message', error);
@@ -557,82 +624,185 @@ const bindTeamAdminControls = (selected: Team, members: TeamMember[]) => {
   });
 };
 
-const bindTeamWorkspace = (
-  selected: Team | null,
+const bindProjectForm = (root: ParentNode, project?: Project) => {
+  const form = root.querySelector<HTMLFormElement>('#project-form');
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    setSubmitting(form, true);
+    try {
+      if (project) {
+        await updateProject(
+          project.projectId,
+          String(data.get('name')),
+          String(data.get('description') ?? ''),
+        );
+      } else {
+        const created = await createProject(
+          String(data.get('name')),
+          String(data.get('description') ?? ''),
+        );
+        activeProjectId = created.projectId;
+        activeProjectTeamId = null;
+      }
+      closeDialog();
+      await loadProjectWorkspace(activeProjectId, activeProjectTeamId);
+    } catch (error) {
+      const output = form.querySelector<HTMLOutputElement>('#project-form-message');
+      if (output) {
+        output.textContent = projectErrorMessage(error);
+        output.classList.remove('hidden');
+      }
+      setSubmitting(form, false);
+    }
+  });
+};
+
+const projectErrorMessage = (error: unknown) => {
+  if (error instanceof ApiError && error.status === 404) {
+    return 'You no longer have access to manage this project.';
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return 'A project with this name already exists.';
+  }
+  if (error instanceof ApiError && error.status === 503) {
+    return 'Team authorization is temporarily unavailable. Try again shortly.';
+  }
+  return error instanceof Error ? error.message : 'Unable to save this project.';
+};
+
+const bindWorkstreamForm = (
+  root: ParentNode,
+  project: Project,
+  team: ProjectTeam,
+) => {
+  const form = root.querySelector<HTMLFormElement>('#workstream-form');
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    setSubmitting(form, true);
+    try {
+      await createWorkstream(
+        project.projectId,
+        team.teamId,
+        String(data.get('name')),
+        String(data.get('branchName')),
+        String(data.get('baseRevision')),
+      );
+      closeDialog();
+      await loadProjectWorkspace(project.projectId, team.teamId);
+    } catch (error) {
+      const output = form.querySelector<HTMLOutputElement>('#workstream-form-message');
+      if (output) {
+        output.textContent = projectErrorMessage(error);
+        output.classList.remove('hidden');
+      }
+      setSubmitting(form, false);
+    }
+  });
+};
+
+const bindProjectWorkspace = (
+  activeProject: Project | null,
+  projectTeams: ProjectTeam[],
+  activeTeam: ProjectTeam | null,
+  identityTeam: Team | null,
   members: TeamMember[],
   capabilities: TeamCapabilities | null,
 ) => {
-  document.querySelectorAll<HTMLButtonElement>('.team-switch').forEach((button) => {
+  document.querySelectorAll<HTMLButtonElement>('.project-switch').forEach((button) => {
     button.addEventListener('click', () => {
-      activeTeamSection = 'members';
-      teamsExpanded = true;
-      void loadTeamWorkspace(button.dataset.teamId ?? null);
+      const projectId = button.dataset.projectId ?? null;
+      void loadProjectWorkspace(
+        projectId === activeProject?.projectId ? null : projectId,
+        null,
+      );
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>('[data-team-section]').forEach((button) => {
+  document.querySelectorAll<HTMLButtonElement>('.project-team-switch, .project-team-row')
+    .forEach((button) => {
     button.addEventListener('click', () => {
-      const section = button.dataset.teamSection as TeamSection;
-      if (section === 'all-teams') {
-        teamsExpanded = !teamsExpanded;
-        button.setAttribute('aria-expanded', String(teamsExpanded));
-        button.querySelector('.team-list-chevron')?.classList.toggle('rotate-90', teamsExpanded);
-        const teamList = document.querySelector<HTMLElement>('.team-list');
-        teamList?.classList.toggle('hidden', !teamsExpanded);
-        teamList?.classList.toggle('grid', teamsExpanded);
-        return;
-      }
-      activeTeamSection = section;
-      void loadTeamWorkspace(selected?.teamId ?? null);
+      void loadProjectWorkspace(activeProject?.projectId ?? null, button.dataset.teamId ?? null);
     });
   });
 
   document.querySelector('#open-team-settings')?.addEventListener('click', () => {
-    if (selected && capabilities) showTeamSettingsPanel(selected, members, capabilities);
+    if (identityTeam && capabilities) showTeamSettingsPanel(identityTeam, members, capabilities);
   });
 
-  document.querySelector('#open-create-team')?.addEventListener('click', showCreateTeamPanel);
+  document.querySelectorAll('.open-create-team').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (activeProject) showCreateTeamPanel(activeProject.projectId);
+    });
+  });
 
-  document.querySelector('#close-team-detail')?.addEventListener('click', () => {
-    activeTeamSection = 'all-teams';
-    void loadTeamWorkspace(selected?.teamId ?? null);
+  document.querySelector('#open-create-project')?.addEventListener('click', () => {
+    showProjectPanel();
+  });
+
+  document.querySelector('#open-edit-project')?.addEventListener('click', () => {
+    if (activeProject) showProjectPanel(activeProject);
+  });
+
+  document.querySelector('#back-to-project')?.addEventListener('click', () => {
+    void loadProjectWorkspace(activeProject?.projectId ?? null, null);
+  });
+
+  document.querySelector('#open-create-workstream')?.addEventListener('click', () => {
+    if (activeProject && activeTeam) showWorkstreamPanel(activeProject, activeTeam);
   });
 };
 
-const loadTeamWorkspace = async (preferredTeamId: string | null = activeTeamId) => {
+const loadProjectWorkspace = async (
+  preferredProjectId: string | null = activeProjectId,
+  preferredTeamId: string | null = activeProjectTeamId,
+) => {
   if (!document.querySelector('#team-workspace .team-content')) {
-    setTeamWorkspace(teamsLoadingView);
+    setTeamWorkspace(projectsLoadingView);
   }
   try {
-    const teams = await listTeams();
-    const selectedId = teams.some((team) => team.teamId === preferredTeamId)
-      ? preferredTeamId
-      : teams[0]?.teamId ?? null;
-    activeTeamId = selectedId;
-
-    if (!selectedId) {
-      setTeamWorkspace(teamsView(teams, null, [], null, activeTeamSection, teamsExpanded));
-      bindTeamWorkspace(null, [], null);
-      return;
+    const [projects, teams] = await Promise.all([listProjects(), listTeams()]);
+    const activeProject = projects.find((project) => project.projectId === preferredProjectId) ?? null;
+    activeProjectId = activeProject?.projectId ?? null;
+    const projectTeams = activeProject ? await listProjectTeams(activeProject.projectId) : [];
+    const activeTeam = projectTeams.find((team) => team.teamId === preferredTeamId) ?? null;
+    activeProjectTeamId = activeTeam?.teamId ?? null;
+    const ownedTeam = activeTeam
+      ? teams.find((team) => team.teamId === activeTeam.teamId) ?? null
+      : null;
+    let identityTeam: Team | null = null;
+    let members: TeamMember[] = [];
+    let capabilities: TeamCapabilities | null = null;
+    let workstreams: Workstream[] = [];
+    if (activeProject && activeTeam && ownedTeam) {
+      [identityTeam, members, capabilities, workstreams] = await Promise.all([
+        getTeam(activeTeam.teamId),
+        listTeamMembers(activeTeam.teamId),
+        getMyTeamCapabilities(activeTeam.teamId),
+        listWorkstreams(activeProject.projectId, activeTeam.teamId),
+      ]);
     }
-
-    const [selected, members, capabilities] = await Promise.all([
-      getTeam(selectedId),
-      listTeamMembers(selectedId),
-      getMyTeamCapabilities(selectedId),
-    ]);
-    setTeamWorkspace(teamsView(
-      teams,
-      selected,
-      members,
-      capabilities,
-      activeTeamSection,
-      teamsExpanded,
+    const canManageProject = projectTeams.some((team) => {
+      const owned = teams.find((candidate) => candidate.teamId === team.teamId);
+      return owned ? ['ADMIN', 'TEAM_LEAD'].includes(owned.role) : false;
+    });
+    setTeamWorkspace(projectWorkspaceView(
+      projects, activeProject, projectTeams, activeTeam, identityTeam, members,
+      capabilities, workstreams, true, canManageProject,
     ));
-    bindTeamWorkspace(selected, members, capabilities);
+    bindProjectWorkspace(
+      activeProject, projectTeams, activeTeam, identityTeam, members, capabilities,
+    );
   } catch (error) {
-    setTeamWorkspace(teamsErrorView(error instanceof Error ? error.message : 'Unable to load teams.'));
-    document.querySelector('#retry-teams')?.addEventListener('click', () => void loadTeamWorkspace());
+    setTeamWorkspace(projectsErrorView(
+      error instanceof ApiError && error.status === 503
+        ? 'Identity authorization is temporarily unavailable. Try again shortly.'
+        : error instanceof Error ? error.message : 'Unable to load projects.',
+    ));
+    document.querySelector('#retry-projects')?.addEventListener(
+      'click', () => void loadProjectWorkspace(),
+    );
   }
 };
 
@@ -734,7 +904,7 @@ const render = () => {
     app.innerHTML = homeView();
     bindLogout();
     bindAccountControls();
-    void loadTeamWorkspace();
+    void loadProjectWorkspace();
   } else {
     if (isAuthenticated()) {
       setRoute('/app');

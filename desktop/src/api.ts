@@ -16,6 +16,8 @@ export class ApiError extends Error {
 type RequestOptions = {
   body?: object;
   token?: string;
+  baseUrl?: string;
+  credentials?: RequestCredentials;
 };
 
 export const request = async <T = void>(
@@ -23,16 +25,21 @@ export const request = async <T = void>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   options: RequestOptions = {},
 ): Promise<T> => {
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    credentials: 'include',
-    headers: {
-      Accept: 'application/vnd.conflux+json;v=1.0',
-      'Content-Type': 'application/json',
-      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${options.baseUrl ?? API_URL}${path}`, {
+      method,
+      credentials: options.credentials ?? 'include',
+      headers: {
+        Accept: 'application/vnd.conflux+json;v=1.0',
+        'Content-Type': 'application/json',
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new ApiError('The service is unavailable. Check that it is running and try again.', 0, null);
+  }
 
   if (!response.ok) {
     const error = (await response.json().catch(() => ({}))) as ErrorResponse;

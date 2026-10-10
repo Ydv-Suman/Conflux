@@ -16,11 +16,13 @@ export type Capability =
   | 'APPROVE_CHANGE'
   | 'MANAGE_TEAM'
   | 'MANAGE_MEMBERS'
-  | 'MANAGE_ROLES';
+  | 'MANAGE_ROLES'
+  | 'MANAGE_PROJECT';
 
 export type Team = {
   teamId: string;
   name: string;
+  description: string | null;
   role: UserRole;
   createdAt: string;
 };
@@ -45,11 +47,14 @@ export const listTeams = () => authenticatedRequest<Team[]>('/api/teams', 'GET')
 export const getTeam = (teamId: string) =>
   authenticatedRequest<Team>(`/api/teams/${teamId}`, 'GET');
 
-export const createTeam = (name: string) =>
-  authenticatedPost<Team>('/api/teams', { name });
+export const createTeam = (name: string, description: string) =>
+  authenticatedPost<Team>('/api/teams', { name, description: description.trim() || null });
 
-export const updateTeam = (teamId: string, name: string) =>
-  authenticatedRequest<Team>(`/api/teams/${teamId}`, 'PUT', { name });
+export const updateTeam = (teamId: string, name: string, description: string) =>
+  authenticatedRequest<Team>(`/api/teams/${teamId}`, 'PUT', {
+    name,
+    description: description.trim() || null,
+  });
 
 export const listTeamMembers = (teamId: string) =>
   authenticatedRequest<TeamMember[]>(`/api/teams/${teamId}/members`, 'GET');
