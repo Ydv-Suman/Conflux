@@ -1,12 +1,14 @@
 package com.conflux.identityservice.grpc.team;
 
 import com.conflux.identityservice.team.entity.Capability;
+import com.conflux.identityservice.team.entity.Team;
 import com.conflux.identityservice.team.entity.TeamMember;
 import com.conflux.identityservice.team.entity.UserRole;
 import com.conflux.identityservice.team.repository.TeamMemberRepository;
 import com.conflux.identityservice.team.service.TeamAuthorizationService;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -47,5 +49,25 @@ class TeamMembershipLookupServiceTests {
         when(members.findByTeamTeamIdAndUserUserId(teamId, userId)).thenReturn(Optional.empty());
 
         assertTrue(service.find(userId, teamId).isEmpty());
+    }
+
+    @Test
+    void listsEveryMembershipForUser() {
+        UUID userId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        Team team = new Team();
+        team.setTeamId(teamId);
+        TeamMember member = new TeamMember();
+        member.setTeam(team);
+        member.setRole(UserRole.VIEWER);
+        when(members.findAllByUserUserIdOrderByJoinedAt(userId)).thenReturn(List.of(member));
+        when(authorization.capabilities(UserRole.VIEWER))
+                .thenReturn(Set.of(Capability.VIEW_PROJECT));
+
+        TeamMembershipLookupService.TeamMembership result = service.findAll(userId).getFirst();
+
+        assertEquals(teamId, result.teamId());
+        assertEquals(UserRole.VIEWER, result.role());
+        assertEquals(Set.of(Capability.VIEW_PROJECT), result.capabilities());
     }
 }
