@@ -67,7 +67,7 @@ public class TeamAuthorizationService {
                 Capability.CREATE_WORKSTREAM, Capability.JOIN_WORKSTREAM,
                 Capability.EDIT_DOCUMENT, Capability.APPROVE_CHANGE,
                 Capability.MANAGE_TEAM, Capability.MANAGE_MEMBERS,
-                Capability.MANAGE_ROLES));
+                Capability.MANAGE_ROLES, Capability.MANAGE_PROJECT));
         result.put(UserRole.SENIOR_DEVELOPER, EnumSet.of(
                 Capability.VIEW_PROJECT, Capability.CREATE_WORKSTREAM,
                 Capability.JOIN_WORKSTREAM, Capability.EDIT_DOCUMENT,

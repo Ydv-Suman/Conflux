@@ -2,6 +2,7 @@ package com.conflux.identityservice.team.repository;
 
 import com.conflux.identityservice.team.entity.TeamMember;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +16,7 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, UUID> {
 
     Optional<TeamMember> findByTeamTeamIdAndUserUserId(UUID teamId, UUID userId);
 
+    @EntityGraph(attributePaths = "team")
     List<TeamMember> findAllByUserUserIdOrderByJoinedAt(UUID userId);
 
     @Query("""

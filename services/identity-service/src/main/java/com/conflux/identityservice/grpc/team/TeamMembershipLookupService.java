@@ -8,6 +8,7 @@ import com.conflux.identityservice.team.service.TeamAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -30,6 +31,16 @@ public class TeamMembershipLookupService {
                 .map(member -> membership(member, authorization.capabilities(member.getRole())));
     }
 
+    @Transactional(readOnly = true)
+    public List<TeamMembership> findAll(UUID userId) {
+        return members.findAllByUserUserIdOrderByJoinedAt(userId).stream()
+                .map(member -> new TeamMembership(
+                        member.getTeam().getTeamId(),
+                        member.getRole(),
+                        authorization.capabilities(member.getRole())))
+                .toList();
+    }
+
     private Membership membership(TeamMember member, Set<Capability> capabilities) {
         return new Membership(member.getRole(), capabilities);
     }
@@ -37,6 +48,12 @@ public class TeamMembershipLookupService {
     public record Membership(UserRole role, Set<Capability> capabilities) {
 
         public Membership {
+            capabilities = Set.copyOf(capabilities);
+        }
+    }
+    public record TeamMembership(UUID teamId, UserRole role, Set<Capability> capabilities) {
+
+        public TeamMembership {
             capabilities = Set.copyOf(capabilities);
         }
     }

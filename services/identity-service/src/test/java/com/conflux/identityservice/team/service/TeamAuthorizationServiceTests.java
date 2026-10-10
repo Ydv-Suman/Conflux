@@ -31,6 +31,10 @@ class TeamAuthorizationServiceTests {
         assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_TEAM));
         assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_MEMBERS));
         assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_ROLES));
+        assertTrue(authorization.capabilities(UserRole.ADMIN).contains(Capability.MANAGE_PROJECT));
+        assertTrue(authorization.capabilities(UserRole.TEAM_LEAD).contains(Capability.MANAGE_PROJECT));
+        assertFalse(authorization.capabilities(UserRole.SENIOR_DEVELOPER)
+                .contains(Capability.MANAGE_PROJECT));
     }
 
     @Test
