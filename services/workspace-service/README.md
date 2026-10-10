@@ -101,7 +101,7 @@ The token signature, expiration, issuer, audience, subject, token ID, and sessio
 
 ```text
 POST /api/projects
-GET  /api/projects?teamId={teamId}
+GET  /api/projects
 GET  /api/projects/{projectId}
 PUT  /api/projects/{projectId}
 GET  /api/projects/{projectId}/teams
@@ -119,16 +119,16 @@ Example create request:
 }
 ```
 
-Project creation, project updates, and team assignment require `CREATE_PROJECT`. Reads require `VIEW_PROJECT`. A capability granted through any team assigned to a project authorizes that operation. Unauthorized resources return `404` to avoid exposing whether they exist.
+Project creation requires `CREATE_PROJECT` for the initial team. Project updates and team assignment require `MANAGE_PROJECT`, which Identity grants only to the existing `ADMIN` and `TEAM_LEAD` roles. The project list contains every project connected to any team where the authenticated user has `VIEW_PROJECT`. Unauthorized resources return `404` to avoid exposing whether they exist.
 
 ## Workstream API
 
 ```text
-POST /api/projects/{projectId}/workstreams
-GET  /api/projects/{projectId}/workstreams
-GET  /api/projects/{projectId}/workstreams/{workstreamId}
-PUT  /api/projects/{projectId}/workstreams/{workstreamId}
-PUT  /api/projects/{projectId}/workstreams/{workstreamId}/status
+POST /api/projects/{projectId}/teams/{teamId}/workstreams
+GET  /api/projects/{projectId}/teams/{teamId}/workstreams
+GET  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}
+PUT  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}
+PUT  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}/status
 ```
 
 Example create request:
@@ -153,7 +153,7 @@ CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
 
 Status changes use row locking so concurrent requests cannot bypass lifecycle checks. `MERGED` is terminal, and merged workstreams cannot be renamed. The public API cannot currently transition a workstream to `MERGED`; that transition remains reserved for the future trusted Git, test, review, and approval workflow.
 
-Reading workstreams requires `VIEW_PROJECT`; creating, renaming, and ordinary lifecycle changes require `CREATE_WORKSTREAM`. Moving a workstream to `READY_TO_MERGE` or `CONFLICT` requires `APPROVE_CHANGE`.
+Every workstream belongs to exactly one team assigned to its project. Reading or changing it requires the capability on that exact team; membership in another project team does not grant access. Reading requires `VIEW_PROJECT`; creating, renaming, and ordinary lifecycle changes require `CREATE_WORKSTREAM`. Moving a workstream to `READY_TO_MERGE` or `CONFLICT` requires `APPROVE_CHANGE`.
 
 Example status request:
 
@@ -176,10 +176,11 @@ Current migrations:
 - `V1__create_projects.sql`
 - `V2__create_workstreams.sql`
 - `V3__create_project_teams.sql`
+- `V4__scope_workstreams_to_teams.sql`
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
 
-Projects created before `V3` have no trustworthy team association and are intentionally not auto-assigned. Assign them through a controlled data migration with a verified team ID before enabling this version against existing production data.
+Projects created before `V3` have no trustworthy team association and are intentionally not auto-assigned. Assign them through a controlled data migration with a verified team ID before enabling this version against existing production data. `V4` assigns existing workstreams only when their project has exactly one team; it stops instead of guessing when ownership is ambiguous.
 
 ## Package structure
 
@@ -222,7 +223,6 @@ Tests must cover authorization failures, validation boundaries, lifecycle transi
 
 The following are intentionally deferred until their required boundary exists:
 
-- project member aggregation across assigned teams
 - workstream participants
 - trusted Git branch and worktree execution
 - revision updates based on verified Git results

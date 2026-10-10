@@ -8,6 +8,8 @@ option java_outer_classname = "TeamAuthorizationProto";
 
 service TeamAuthorization {
   rpc GetMembership(GetTeamMembershipRequest) returns (TeamMembershipResponse);
+  rpc ListMemberships(ListTeamMembershipsRequest) returns (ListTeamMembershipsResponse);
+  rpc GetTeamSummaries(GetTeamSummariesRequest) returns (GetTeamSummariesResponse);
 }
 
 message GetTeamMembershipRequest {
@@ -19,6 +21,34 @@ message TeamMembershipResponse {
   bool is_member = 1;
   TeamRole role = 2;
   repeated TeamCapability capabilities = 3;
+}
+
+message ListTeamMembershipsRequest {
+  string user_id = 1;
+}
+
+message TeamMembership {
+  string team_id = 1;
+  TeamRole role = 2;
+  repeated TeamCapability capabilities = 3;
+}
+
+message ListTeamMembershipsResponse {
+  repeated TeamMembership memberships = 1;
+}
+
+message GetTeamSummariesRequest {
+  repeated string team_ids = 1;
+}
+
+message TeamSummary {
+  string team_id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message GetTeamSummariesResponse {
+  repeated TeamSummary teams = 1;
 }
 
 enum TeamRole {
@@ -41,4 +71,5 @@ enum TeamCapability {
   TEAM_CAPABILITY_MANAGE_TEAM = 7;
   TEAM_CAPABILITY_MANAGE_MEMBERS = 8;
   TEAM_CAPABILITY_MANAGE_ROLES = 9;
+  TEAM_CAPABILITY_MANAGE_PROJECT = 10;
 }

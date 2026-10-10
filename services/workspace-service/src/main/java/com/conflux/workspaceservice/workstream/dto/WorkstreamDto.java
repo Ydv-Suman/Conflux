@@ -8,6 +8,7 @@ import java.util.UUID;
 public record WorkstreamDto(
         UUID workstreamId,
         UUID projectId,
+        UUID teamId,
         String name,
         String branchName,
         String baseRevision,

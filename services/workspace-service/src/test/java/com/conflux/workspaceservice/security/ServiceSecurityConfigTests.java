@@ -35,7 +35,7 @@ class ServiceSecurityConfigTests {
 
     @Test
     void projectRoutesRequireAuthentication() throws Exception {
-        mvc.perform(get("/api/projects").param("teamId", UUID.randomUUID().toString()))
+        mvc.perform(get("/api/projects"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/projects")
                         .contentType("application/json")
@@ -46,14 +46,11 @@ class ServiceSecurityConfigTests {
     @Test
     void authenticatedProjectRequestUsesTokenSubject() throws Exception {
         UUID actorId = UUID.randomUUID();
-        UUID teamId = UUID.randomUUID();
-
         mvc.perform(get("/api/projects")
-                        .param("teamId", teamId.toString())
                         .with(jwt().jwt(token -> token.subject(actorId.toString()))))
                 .andExpect(status().isOk());
 
-        verify(projects).list(actorId, teamId);
+        verify(projects).list(actorId);
     }
 
     @Test
@@ -70,8 +67,9 @@ class ServiceSecurityConfigTests {
     @Test
     void workstreamRoutesRequireAuthentication() throws Exception {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
 
-        mvc.perform(get("/api/projects/{projectId}/workstreams", projectId))
+        mvc.perform(get("/api/projects/{projectId}/teams/{teamId}/workstreams", projectId, teamId))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -79,8 +77,9 @@ class ServiceSecurityConfigTests {
     void unsafeBranchNameIsRejected() throws Exception {
         UUID actorId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
 
-        mvc.perform(post("/api/projects/{projectId}/workstreams", projectId)
+        mvc.perform(post("/api/projects/{projectId}/teams/{teamId}/workstreams", projectId, teamId)
                         .with(jwt().jwt(token -> token.subject(actorId.toString())))
                         .contentType("application/json")
                         .content("""
