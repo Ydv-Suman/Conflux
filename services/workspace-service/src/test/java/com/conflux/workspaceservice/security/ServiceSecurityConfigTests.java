@@ -35,7 +35,8 @@ class ServiceSecurityConfigTests {
 
     @Test
     void projectRoutesRequireAuthentication() throws Exception {
-        mvc.perform(get("/api/projects")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/projects").param("teamId", UUID.randomUUID().toString()))
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/projects")
                         .contentType("application/json")
                         .content("{\"name\":\"Conflux\"}"))
@@ -45,12 +46,14 @@ class ServiceSecurityConfigTests {
     @Test
     void authenticatedProjectRequestUsesTokenSubject() throws Exception {
         UUID actorId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
 
         mvc.perform(get("/api/projects")
+                        .param("teamId", teamId.toString())
                         .with(jwt().jwt(token -> token.subject(actorId.toString()))))
                 .andExpect(status().isOk());
 
-        verify(projects).list(actorId);
+        verify(projects).list(actorId, teamId);
     }
 
     @Test

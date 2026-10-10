@@ -3,6 +3,7 @@ package com.conflux.workspaceservice.shared.exception;
 import com.conflux.workspaceservice.project.exception.ProjectConflictException;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.shared.dto.ErrorResponseDto;
+import com.conflux.workspaceservice.identity.exception.IdentityServiceUnavailableException;
 import com.conflux.workspaceservice.workstream.exception.WorkstreamConflictException;
 import com.conflux.workspaceservice.workstream.exception.WorkstreamNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +17,13 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(IdentityServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponseDto> handleIdentityUnavailable(
+            IdentityServiceUnavailableException exception, HttpServletRequest request) {
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE,
+                exception.getMessage(), request.getRequestURI());
+    }
 
     @ExceptionHandler(ProjectNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleProjectNotFound(

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package conflux.identity.v1;
+
+option java_multiple_files = true;
+option java_package = "com.conflux.identityservice.grpc.team.v1";
+option java_outer_classname = "TeamAuthorizationProto";
+
+service TeamAuthorization {
+  rpc GetMembership(GetTeamMembershipRequest) returns (TeamMembershipResponse);
+}
+
+message GetTeamMembershipRequest {
+  string user_id = 1;
+  string team_id = 2;
+}
+
+message TeamMembershipResponse {
+  bool is_member = 1;
+  TeamRole role = 2;
+  repeated TeamCapability capabilities = 3;
+}
+
+enum TeamRole {
+  TEAM_ROLE_UNSPECIFIED = 0;
+  TEAM_ROLE_ADMIN = 1;
+  TEAM_ROLE_TEAM_LEAD = 2;
+  TEAM_ROLE_SENIOR_DEVELOPER = 3;
+  TEAM_ROLE_DEVELOPER = 4;
+  TEAM_ROLE_VIEWER = 5;
+}
+
+enum TeamCapability {
+  TEAM_CAPABILITY_UNSPECIFIED = 0;
+  TEAM_CAPABILITY_VIEW_PROJECT = 1;
+  TEAM_CAPABILITY_CREATE_PROJECT = 2;
+  TEAM_CAPABILITY_CREATE_WORKSTREAM = 3;
+  TEAM_CAPABILITY_JOIN_WORKSTREAM = 4;
+  TEAM_CAPABILITY_EDIT_DOCUMENT = 5;
+  TEAM_CAPABILITY_APPROVE_CHANGE = 6;
+  TEAM_CAPABILITY_MANAGE_TEAM = 7;
+  TEAM_CAPABILITY_MANAGE_MEMBERS = 8;
+  TEAM_CAPABILITY_MANAGE_ROLES = 9;
+}

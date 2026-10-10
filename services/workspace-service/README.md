@@ -9,11 +9,11 @@ The service currently provides:
 - authenticated project creation, listing, lookup, and update
 - authenticated workstream creation, listing, lookup, update, and lifecycle transitions
 - PostgreSQL persistence managed by Flyway
-- owner-scoped authorization until Identity Service integration is available
+- team-scoped authorization verified through the Identity Service gRPC API
 - validation for project data, Git branch names, and Git revision hashes
 - structured API validation, not-found, and conflict responses
 
-The current independent-service phase deliberately does not accept team IDs or additional participant IDs. Project-team membership and role capabilities require verified data from the Identity Service and will be added with the internal gRPC integration.
+Projects can be assigned to one or more teams. Workspace Service accepts team identifiers only as resource selectors; it always verifies the authenticated user's membership and capability with Identity Service before reading or changing data.
 
 ## Requirements
 
@@ -65,9 +65,13 @@ JWT_AUDIENCE=conflux-api
 JWT_PUBLIC_KEY=file:../identity-service/secrets/jwt-public.pem
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 FORWARD_HEADERS_STRATEGY=none
+IDENTITY_GRPC_TARGET=localhost:9090
+IDENTITY_GRPC_DEADLINE=2s
+IDENTITY_GRPC_PLAINTEXT=true
+INTERNAL_GRPC_TOKEN=replace-with-the-same-random-32-plus-character-token-used-by-identity
 ```
 
-The complete `secrets/` directory is ignored by Git. Never commit database credentials or JWT keys. Workspace Service only needs the Identity Service public key and must never receive its private signing key.
+The complete `secrets/` directory is ignored by Git. Never commit database credentials, internal service tokens, or JWT keys. Workspace Service only needs the Identity Service public key and must never receive its private signing key. Plaintext gRPC is an explicit local-development option; leave it disabled and use TLS outside local development.
 
 Use exact CORS origins. Wildcard origins are rejected at startup. In production, mount the JWT public key read-only and inject database credentials from the deployment secret manager.
 
@@ -97,9 +101,12 @@ The token signature, expiration, issuer, audience, subject, token ID, and sessio
 
 ```text
 POST /api/projects
-GET  /api/projects
+GET  /api/projects?teamId={teamId}
 GET  /api/projects/{projectId}
 PUT  /api/projects/{projectId}
+GET  /api/projects/{projectId}/teams
+POST /api/projects/{projectId}/teams
+DELETE /api/projects/{projectId}/teams/{teamId}
 ```
 
 Example create request:
@@ -107,11 +114,12 @@ Example create request:
 ```json
 {
   "name": "Payments Platform",
-  "description": "Payment services and shared repository metadata"
+  "description": "Payment services and shared repository metadata",
+  "teamId": "3a9422a7-fbbf-455e-9c3c-da40e2e78ad9"
 }
 ```
 
-Only the authenticated creator can currently list, read, or update a project. Requests for another user's project return `404` to avoid exposing whether the resource exists.
+Project creation, project updates, and team assignment require `CREATE_PROJECT`. Reads require `VIEW_PROJECT`. A capability granted through any team assigned to a project authorizes that operation. Unauthorized resources return `404` to avoid exposing whether they exist.
 
 ## Workstream API
 
@@ -145,6 +153,8 @@ CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
 
 Status changes use row locking so concurrent requests cannot bypass lifecycle checks. `MERGED` is terminal, and merged workstreams cannot be renamed. The public API cannot currently transition a workstream to `MERGED`; that transition remains reserved for the future trusted Git, test, review, and approval workflow.
 
+Reading workstreams requires `VIEW_PROJECT`; creating, renaming, and ordinary lifecycle changes require `CREATE_WORKSTREAM`. Moving a workstream to `READY_TO_MERGE` or `CONFLICT` requires `APPROVE_CHANGE`.
+
 Example status request:
 
 ```json
@@ -165,8 +175,11 @@ Current migrations:
 
 - `V1__create_projects.sql`
 - `V2__create_workstreams.sql`
+- `V3__create_project_teams.sql`
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
+
+Projects created before `V3` have no trustworthy team association and are intentionally not auto-assigned. Assign them through a controlled data migration with a verified team ID before enabling this version against existing production data.
 
 ## Package structure
 
@@ -209,8 +222,7 @@ Tests must cover authorization failures, validation boundaries, lifecycle transi
 
 The following are intentionally deferred until their required boundary exists:
 
-- Identity Service gRPC membership and capability checks
-- project-to-team assignments and project member visibility
+- project member aggregation across assigned teams
 - workstream participants
 - trusted Git branch and worktree execution
 - revision updates based on verified Git results

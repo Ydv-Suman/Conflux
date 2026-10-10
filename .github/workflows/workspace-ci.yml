@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - services/workspace-service/**
+      - services/identity-service/src/main/proto/team_authorization.proto
       - .github/workflows/workspace-ci.yml
   pull_request:
     paths:
       - services/workspace-service/**
+      - services/identity-service/src/main/proto/team_authorization.proto
       - .github/workflows/workspace-ci.yml
 
 concurrency:
@@ -38,6 +40,9 @@ jobs:
       DB_URL: jdbc:postgresql://localhost:5432/workspaceDB
       DB_USERNAME: postgres
       DB_PASSWORD: workspace123
+      INTERNAL_GRPC_TOKEN: ci-only-internal-token-at-least-32-characters
+      IDENTITY_GRPC_TARGET: localhost:9090
+      IDENTITY_GRPC_PLAINTEXT: "true"
     steps:
       - uses: actions/checkout@v7
 
@@ -47,6 +52,9 @@ jobs:
           java-version: 25
           cache: maven
           cache-dependency-path: services/workspace-service/pom.xml
+
+      - name: Verify Identity authorization contract is synchronized
+        run: cmp services/identity-service/src/main/proto/team_authorization.proto services/workspace-service/src/main/proto/team_authorization.proto
 
       - name: Generate ephemeral JWT verification key
         run: |
