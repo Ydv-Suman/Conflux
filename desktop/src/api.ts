@@ -29,6 +29,7 @@ export const request = async <T = void>(
   try {
     response = await fetch(`${options.baseUrl ?? API_URL}${path}`, {
       method,
+      cache: method === 'GET' ? 'no-store' : 'default',
       credentials: options.credentials ?? 'include',
       headers: {
         Accept: 'application/vnd.conflux+json;v=1.0',

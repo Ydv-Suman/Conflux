@@ -1,9 +1,7 @@
 import { escapeHtml } from '../../html';
 import type { Team, TeamCapabilities, TeamMember } from '../teams/api';
+import { teamMemberListView } from '../teams/view';
 import type { Project, ProjectTeam, Workstream } from './api';
-
-const memberName = (member: TeamMember) =>
-  member.fullName?.trim() || member.username || 'Team member';
 
 const label = (value: string) => value.replaceAll('_', ' ').toLowerCase()
   .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -19,6 +17,17 @@ const projectForm = (project?: Project) => `
 export const projectPanelView = (project?: Project) => `
   <header class="flex items-start justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8"><div>${project ? '<p class="mb-2 font-mono text-[10px] font-bold tracking-[.12em] text-[#59616c]">Project settings</p>' : ''}<h2 class="m-0 text-3xl font-bold tracking-[-.04em]">${project ? 'Edit project' : 'Create project'}</h2></div><button class="panel-close" type="button" aria-label="Close project panel">×</button></header>
   <div class="p-7">${projectForm(project)}</div>`;
+
+export const assignProjectTeamPanelView = (teams: Team[]) => `
+  <header class="flex items-center justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8">
+    <h2 class="m-0 text-3xl font-bold tracking-[-.04em]">Add team</h2>
+    <button class="panel-close" type="button" aria-label="Close add team panel">×</button>
+  </header>
+  <form class="grid gap-4 p-7" id="assign-project-team-form">
+    <label class="field-label">Team<select class="field-input h-12 w-full px-3 text-sm" name="teamId" required>${teams.map((team) => `<option value="${escapeHtml(team.teamId)}">${escapeHtml(team.name)}</option>`).join('')}</select></label>
+    <button class="neutral-button-filled justify-self-center" data-label="Add team" type="submit">Add team</button>
+    <output class="hidden text-xs text-[#7f342e]" id="assign-project-team-message" role="alert"></output>
+  </form>`;
 
 export const workstreamPanelView = (project: Project, team: ProjectTeam) => `
   <header class="flex items-start justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8"><div><p class="mb-2 font-mono text-[10px] font-bold tracking-[.12em] text-[#59616c]">${escapeHtml(project.name)} · ${escapeHtml(team.name)}</p><h2 class="m-0 text-3xl font-bold tracking-[-.04em]">Create workstream</h2></div><button class="panel-close" type="button" aria-label="Close workstream panel">×</button></header>
@@ -45,10 +54,10 @@ export const projectWorkspaceView = (
   projects: Project[], activeProject: Project | null, projectTeams: ProjectTeam[],
   activeTeam: ProjectTeam | null, identityTeam: Team | null, members: TeamMember[],
   capabilities: TeamCapabilities | null, workstreams: Workstream[],
-  canCreateProject: boolean, canManageProject: boolean,
+  canCreateProject: boolean, canManageProject: boolean, assignableTeams: Team[],
 ) => {
-  const canManageTeam = Boolean(capabilities?.capabilities.some((capability) =>
-    ['MANAGE_TEAM', 'MANAGE_MEMBERS', 'MANAGE_ROLES'].includes(capability)));
+  const canEditTeam = Boolean(capabilities?.capabilities.includes('MANAGE_TEAM'));
+  const canAddMember = Boolean(capabilities?.capabilities.includes('MANAGE_MEMBERS'));
   const canCreateWorkstream = Boolean(capabilities?.capabilities.includes('CREATE_WORKSTREAM'));
   const sidebar = `
     <nav class="team-sidebar bg-[#efede6] p-4" aria-label="Projects">
@@ -77,7 +86,14 @@ export const projectWorkspaceView = (
     return `<div class="team-shell grid gap-px overflow-hidden rounded-2xl border border-[#d8d6ce] bg-[#d8d6ce] md:grid-cols-[270px_minmax(0,1fr)]">${sidebar}<section class="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center"><div><h1 class="m-0 text-3xl font-bold tracking-[-.04em]">Welcome to Conflux</h1><p class="mb-0 mt-2 text-sm text-[#6d716b]">Choose a project to view its teams.</p></div></section></div>`;
   }
 
-  const header = `<header class="border-b border-[#d8d6ce] px-6 py-6"><div class="flex items-start justify-between gap-5"><div class="flex min-w-0 items-start gap-3">${activeTeam ? '<button class="panel-action team-back-button mt-0.5 shrink-0 rounded-xl" id="back-to-project" type="button" aria-label="Back to project" title="Back to project"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>' : ''}<div class="min-w-0"><h1 class="m-0 truncate text-3xl font-bold tracking-[-.04em]">${escapeHtml(activeTeam?.name || activeProject.name)}</h1><p class="mb-0 mt-2 max-w-[70ch] text-sm leading-relaxed text-[#6d716b]">${escapeHtml(activeTeam?.description || activeProject.description || 'No description added.')}</p></div></div><div class="flex shrink-0 gap-2">${!activeTeam && canManageProject ? '<button class="neutral-button" id="open-edit-project" type="button">Edit project</button>' : ''}${activeTeam && canManageTeam ? '<button class="neutral-button" id="open-team-settings" type="button">Edit team</button>' : ''}</div></div></header>`;
-  const content = activeTeam ? (identityTeam && capabilities ? `<section class="px-6 py-6"><div class="flex items-center justify-between"><h3 class="m-0 text-lg font-semibold tracking-[-.02em]">Members</h3><span class="text-xs text-[#6d716b]">Your role: ${label(capabilities.role)}</span></div><div class="mt-3 divide-y divide-[#d8d6ce]">${members.map((member) => `<article class="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div class="min-w-0"><strong class="block truncate text-sm">${escapeHtml(memberName(member))}</strong><span class="mt-1 block truncate text-xs text-[#6d716b]">@${escapeHtml(member.username)} · Joined ${new Date(member.joinedAt).toLocaleDateString()}</span></div><span class="text-xs text-[#59616c]">${label(member.role)}</span></article>`).join('')}</div></section>${workstreamList(workstreams, canCreateWorkstream)}` : `<section class="grid min-h-64 place-items-center px-7 py-12 text-center"><div><h3 class="m-0 text-lg font-semibold">Team access is limited</h3><p class="mb-0 mt-2 max-w-[42ch] text-sm leading-relaxed text-[#6d716b]">You can see this team belongs to the project, but its members and workstreams are available only to team members.</p></div></section>`) : `<section class="px-6 py-6"><div class="flex items-center justify-between gap-4"><h3 class="m-0 text-lg font-semibold tracking-[-.02em]">Teams <span class="text-sm font-medium text-[#6d716b]">(${projectTeams.length})</span></h3>${canManageProject ? '<button class="neutral-button-filled open-create-team" type="button">Create team</button>' : ''}</div><div class="mt-4 divide-y divide-[#d8d6ce]">${projectTeams.map((team) => `<button class="project-team-row block w-full py-4 text-left" data-team-id="${escapeHtml(team.teamId)}" type="button"><strong class="block truncate text-sm">${escapeHtml(team.name || 'Unnamed team')}</strong><span class="mt-1 block truncate text-xs text-[#6d716b]">${escapeHtml(team.description || 'No description added.')}</span></button>`).join('')}</div></section>`;
+  const teamTitle = activeTeam ? `<div class="flex min-w-0 items-center gap-2"><h1 class="m-0 truncate text-3xl font-bold tracking-[-.04em]">${escapeHtml(activeTeam.name)}</h1>${canEditTeam ? '<button class="inline-edit shrink-0 rounded-lg" id="open-edit-team" type="button" aria-label="Edit team" title="Edit team"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg></button>' : ''}</div>` : `<h1 class="m-0 truncate text-3xl font-bold tracking-[-.04em]">${escapeHtml(activeProject.name)}</h1>`;
+  const headerActions = !activeTeam && canManageProject
+    ? '<button class="neutral-button shrink-0" id="open-edit-project" type="button">Edit project</button>'
+    : activeTeam && canManageProject
+      ? '<button class="danger-button danger-button-compact shrink-0" id="remove-project-team" type="button">Remove team</button>'
+      : '';
+  const header = `<header class="border-b border-[#d8d6ce] px-6 py-6"><div class="flex items-start justify-between gap-5"><div class="flex min-w-0 items-start gap-3">${activeTeam ? '<button class="panel-action team-back-button mt-0.5 shrink-0 rounded-xl" id="back-to-project" type="button" aria-label="Back to project" title="Back to project"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>' : ''}<div class="min-w-0">${teamTitle}<p class="mb-0 mt-2 max-w-[70ch] text-sm leading-relaxed text-[#6d716b]">${escapeHtml(activeTeam?.description || activeProject.description || 'No description added.')}</p></div></div>${headerActions}</div></header>`;
+  const teamActions = canManageProject ? `<div class="flex gap-2">${assignableTeams.length ? '<button class="neutral-button" id="open-assign-team" type="button">Add team</button>' : ''}<button class="neutral-button-filled open-create-team" type="button">Create team</button></div>` : '';
+  const content = activeTeam ? (identityTeam && capabilities ? `<section class="px-6 py-6"><div class="flex items-center justify-between gap-4"><h3 class="m-0 text-lg font-semibold tracking-[-.02em]">Members</h3>${canAddMember ? '<button class="neutral-button-filled" id="open-add-member" type="button">Add member</button>' : ''}</div><div class="mt-3">${teamMemberListView(members, capabilities)}</div></section>${workstreamList(workstreams, canCreateWorkstream)}` : `<section class="grid min-h-64 place-items-center px-7 py-12 text-center"><div><h3 class="m-0 text-lg font-semibold">Team access is limited</h3><p class="mb-0 mt-2 max-w-[42ch] text-sm leading-relaxed text-[#6d716b]">You can see this team belongs to the project, but its members and workstreams are available only to team members.</p></div></section>`) : `<section class="px-6 py-6"><div class="flex items-center justify-between gap-4"><h3 class="m-0 text-lg font-semibold tracking-[-.02em]">Teams <span class="text-sm font-medium text-[#6d716b]">(${projectTeams.length})</span></h3>${teamActions}</div><div class="mt-4 divide-y divide-[#d8d6ce]">${projectTeams.map((team) => `<button class="project-team-row block w-full py-4 text-left" data-team-id="${escapeHtml(team.teamId)}" type="button"><strong class="block truncate text-sm">${escapeHtml(team.name || 'Unnamed team')}</strong><span class="mt-1 block truncate text-xs text-[#6d716b]">${escapeHtml(team.description || 'No description added.')}</span></button>`).join('')}</div></section>`;
   return `<div class="team-shell grid gap-px overflow-hidden rounded-2xl border border-[#d8d6ce] bg-[#d8d6ce] md:grid-cols-[270px_minmax(0,1fr)]">${sidebar}<section class="team-content min-h-[420px] min-w-0 overflow-hidden bg-[#f8f7f2]">${header}${content}</section></div>`;
 };
