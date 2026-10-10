@@ -5,5 +5,10 @@ import com.conflux.identityservice.team.entity.UserRole;
 import java.time.Instant;
 import java.util.UUID;
 
-public record TeamDto(UUID teamId, String name, UserRole role, Instant createdAt) {
+public record TeamDto(
+        UUID teamId,
+        String name,
+        String description,
+        UserRole role,
+        Instant createdAt) {
 }

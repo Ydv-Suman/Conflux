@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -108,7 +109,31 @@ class TeamServiceTests {
                 teams, members, users, emails, new TeamAuthorizationService(members));
 
         assertThrows(TeamAccessDeniedException.class,
-                () -> secureService.update(actorId, teamId, new UpdateTeamRequestDto("Renamed")));
+                () -> secureService.update(actorId, teamId,
+                        new UpdateTeamRequestDto("Renamed", "Updated responsibility")));
         verify(teams, never()).save(team);
+    }
+
+    @Test
+    void authorizedUpdatePersistsNormalizedDescription() {
+        UUID teamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Team team = new Team();
+        team.setTeamId(teamId);
+        User actor = new User();
+        actor.setUserId(actorId);
+        TeamMember membership = new TeamMember();
+        membership.setTeam(team);
+        membership.setUser(actor);
+        membership.setRole(UserRole.ADMIN);
+        when(members.findAllForUpdate(teamId)).thenReturn(List.of(membership));
+        when(teams.findById(teamId)).thenReturn(java.util.Optional.of(team));
+
+        var result = service.update(actorId, teamId,
+                new UpdateTeamRequestDto("Authentication", "  Owns login and sessions.  "));
+
+        assertEquals("Owns login and sessions.", team.getDescription());
+        assertEquals(team.getDescription(), result.description());
+        verify(teams).save(team);
     }
 }

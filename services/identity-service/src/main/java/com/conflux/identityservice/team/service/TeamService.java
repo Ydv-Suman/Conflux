@@ -57,6 +57,7 @@ public class TeamService {
         User actor = verifiedUser(actorId);
         Team team = new Team();
         team.setName(request.name());
+        team.setDescription(request.description());
         team.setCreatedBy(actor);
         teams.saveAndFlush(team);
 
@@ -91,6 +92,7 @@ public class TeamService {
 
         Team team = teams.findById(teamId).orElseThrow(TeamNotFoundException::new);
         team.setName(request.name());
+        team.setDescription(request.description());
         teams.save(team);
         LOGGER.info("event=TEAM_UPDATED team_id={} actor_id={}", teamId, actorId);
         return toDto(team, actor.getRole());
@@ -218,7 +220,8 @@ public class TeamService {
     }
 
     private TeamDto toDto(Team team, UserRole role) {
-        return new TeamDto(team.getTeamId(), team.getName(), role, team.getCreatedAt());
+        return new TeamDto(team.getTeamId(), team.getName(), team.getDescription(),
+                role, team.getCreatedAt());
     }
 
     private TeamMemberDto toMemberDto(TeamMember member) {
