@@ -22,6 +22,10 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
             """)
     List<Project> findAllByTeamIds(@Param("teamIds") List<UUID> teamIds);
 
+    List<Project> findAllByCreatedByOrderByCreatedAtDesc(UUID createdBy);
+
+    boolean existsByProjectIdAndCreatedBy(UUID projectId, UUID createdBy);
+
     Optional<Project> findByProjectId(UUID projectId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

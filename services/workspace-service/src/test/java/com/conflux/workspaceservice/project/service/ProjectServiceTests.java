@@ -2,6 +2,7 @@ package com.conflux.workspaceservice.project.service;
 
 import com.conflux.workspaceservice.identity.client.TeamAuthorizationClient;
 import com.conflux.workspaceservice.identity.model.TeamCapability;
+import com.conflux.workspaceservice.project.dto.CreateProjectRequestDto;
 import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
 import com.conflux.workspaceservice.project.entity.Project;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.any;
 
 class ProjectServiceTests {
 
@@ -40,7 +42,32 @@ class ProjectServiceTests {
 
         service.list(actorId);
 
+        verify(projects).findAllByCreatedByOrderByCreatedAtDesc(actorId);
         verify(projects).findAllByTeamIds(List.of(teamId));
+    }
+
+    @Test
+    void listIncludesOwnedProjectsWithoutTeamMemberships() {
+        UUID actorId = UUID.randomUUID();
+        when(authorization.teamIdsWithCapability(actorId, TeamCapability.VIEW_PROJECT))
+                .thenReturn(List.of());
+
+        service.list(actorId);
+
+        verify(projects).findAllByCreatedByOrderByCreatedAtDesc(actorId);
+        verify(projects, never()).findAllByTeamIds(any());
+    }
+
+    @Test
+    void projectIsCreatedWithoutAssigningATeam() {
+        UUID actorId = UUID.randomUUID();
+
+        service.create(actorId, new CreateProjectRequestDto("Payments", "Payment services"));
+
+        verify(projects).saveAndFlush(any(Project.class));
+        verify(projectTeams, never()).saveAndFlush(any());
+        verify(authorization, never()).requireTeamCapability(
+                any(), any(), any());
     }
 
     @Test
@@ -74,12 +101,24 @@ class ProjectServiceTests {
         UUID teamId = UUID.randomUUID();
         when(projects.findForUpdate(projectId)).thenReturn(Optional.of(new Project()));
         when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
-        when(projectTeams.countByProjectProjectId(projectId)).thenReturn(2L);
         when(workstreams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
 
         assertThrows(ProjectConflictException.class,
                 () -> service.removeTeam(actorId, projectId, teamId));
 
         verify(projectTeams, never()).deleteByProjectProjectIdAndTeamId(projectId, teamId);
+    }
+
+    @Test
+    void lastTeamWithoutWorkstreamsCanBeRemoved() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(new Project()));
+        when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
+
+        service.removeTeam(actorId, projectId, teamId);
+
+        verify(projectTeams).deleteByProjectProjectIdAndTeamId(projectId, teamId);
     }
 }

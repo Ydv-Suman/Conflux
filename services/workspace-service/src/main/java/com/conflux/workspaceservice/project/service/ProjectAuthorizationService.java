@@ -4,6 +4,7 @@ import com.conflux.workspaceservice.identity.client.TeamAuthorizationClient;
 import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.identity.model.TeamMembership;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
+import com.conflux.workspaceservice.project.repository.ProjectRepository;
 import com.conflux.workspaceservice.project.repository.ProjectTeamRepository;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +15,15 @@ import java.util.UUID;
 public class ProjectAuthorizationService {
 
     private final ProjectTeamRepository projectTeams;
+    private final ProjectRepository projects;
     private final TeamAuthorizationClient identity;
 
     public ProjectAuthorizationService(
-            ProjectTeamRepository projectTeams, TeamAuthorizationClient identity) {
+            ProjectTeamRepository projectTeams,
+            ProjectRepository projects,
+            TeamAuthorizationClient identity) {
         this.projectTeams = projectTeams;
+        this.projects = projects;
         this.identity = identity;
     }
 
@@ -29,6 +34,9 @@ public class ProjectAuthorizationService {
     }
 
     public void requireProjectCapability(UUID actorId, UUID projectId, TeamCapability capability) {
+        if (projects.existsByProjectIdAndCreatedBy(projectId, actorId)) {
+            return;
+        }
         boolean allowed = projectTeams.findTeamIdsByProjectId(projectId).stream()
                 .anyMatch(teamId -> identity.getAuthorization(actorId, teamId).has(capability));
         if (!allowed) {

@@ -16,8 +16,6 @@ public interface ProjectTeamRepository extends JpaRepository<ProjectTeam, UUID> 
     @Query("SELECT assignment.teamId FROM ProjectTeam assignment WHERE assignment.project.projectId = :projectId")
     List<UUID> findTeamIdsByProjectId(@Param("projectId") UUID projectId);
 
-    long countByProjectProjectId(UUID projectId);
-
     boolean existsByProjectProjectIdAndTeamId(UUID projectId, UUID teamId);
 
     @Modifying

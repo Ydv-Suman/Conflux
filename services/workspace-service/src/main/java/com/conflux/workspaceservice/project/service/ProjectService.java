@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -52,18 +53,12 @@ public class ProjectService {
 
     @Transactional
     public ProjectDto create(UUID actorId, CreateProjectRequestDto request) {
-        authorization.requireTeamCapability(actorId, request.teamId(), TeamCapability.CREATE_PROJECT);
         Project project = new Project();
         project.setName(request.name());
         project.setDescription(request.description());
         project.setCreatedBy(actorId);
         try {
             projects.saveAndFlush(project);
-            ProjectTeam assignment = new ProjectTeam();
-            assignment.setProject(project);
-            assignment.setTeamId(request.teamId());
-            assignment.setAddedBy(actorId);
-            projectTeams.saveAndFlush(assignment);
         } catch (DataIntegrityViolationException failure) {
             if (hasConstraint(failure, "projects_creator_name_uq")) {
                 throw new ProjectConflictException("A project with this name already exists");
@@ -77,10 +72,14 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public List<ProjectDto> list(UUID actorId) {
         List<UUID> teamIds = authorization.teamIdsWithCapability(actorId, TeamCapability.VIEW_PROJECT);
-        if (teamIds.isEmpty()) {
-            return List.of();
+        Map<UUID, Project> accessible = new LinkedHashMap<>();
+        projects.findAllByCreatedByOrderByCreatedAtDesc(actorId)
+                .forEach(project -> accessible.put(project.getProjectId(), project));
+        if (!teamIds.isEmpty()) {
+            projects.findAllByTeamIds(teamIds)
+                    .forEach(project -> accessible.putIfAbsent(project.getProjectId(), project));
         }
-        return projects.findAllByTeamIds(teamIds).stream()
+        return accessible.values().stream()
                 .map(this::toDto)
                 .toList();
     }
@@ -113,6 +112,9 @@ public class ProjectService {
     public List<ProjectTeamDto> listTeams(UUID actorId, UUID projectId) {
         authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
         List<ProjectTeam> assignments = projectTeams.findAllByProjectProjectIdOrderByAddedAt(projectId);
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
         Map<UUID, TeamSummary> summaries = identity.getTeamSummaries(assignments.stream()
                         .map(ProjectTeam::getTeamId)
                         .toList()).stream()
@@ -153,9 +155,6 @@ public class ProjectService {
         projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
         if (!projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)) {
             throw new ProjectNotFoundException();
-        }
-        if (projectTeams.countByProjectProjectId(projectId) <= 1) {
-            throw new ProjectConflictException("A project must remain assigned to at least one team");
         }
         if (workstreams.existsByProjectProjectIdAndTeamId(projectId, teamId)) {
             throw new ProjectConflictException("A team with workstreams cannot be removed");
