@@ -5,6 +5,7 @@ import com.conflux.workspaceservice.identity.model.TeamAuthorization;
 import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.identity.model.TeamMembership;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
+import com.conflux.workspaceservice.project.repository.ProjectRepository;
 import com.conflux.workspaceservice.project.repository.ProjectTeamRepository;
 import org.junit.jupiter.api.Test;
 
@@ -22,9 +23,23 @@ import static org.mockito.Mockito.when;
 class ProjectAuthorizationServiceTests {
 
     private final ProjectTeamRepository projectTeams = mock(ProjectTeamRepository.class);
+    private final ProjectRepository projects = mock(ProjectRepository.class);
     private final TeamAuthorizationClient identity = mock(TeamAuthorizationClient.class);
     private final ProjectAuthorizationService authorization =
-            new ProjectAuthorizationService(projectTeams, identity);
+            new ProjectAuthorizationService(projectTeams, projects, identity);
+
+    @Test
+    void projectOwnerIsAllowedWithoutCallingIdentity() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(projects.existsByProjectIdAndCreatedBy(projectId, actorId)).thenReturn(true);
+
+        assertDoesNotThrow(() -> authorization.requireProjectCapability(
+                actorId, projectId, TeamCapability.MANAGE_PROJECT));
+
+        verify(identity, never()).getAuthorization(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 
     @Test
     void teamMemberWithCapabilityIsAllowed() {

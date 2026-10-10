@@ -114,12 +114,11 @@ Example create request:
 ```json
 {
   "name": "Payments Platform",
-  "description": "Payment services and shared repository metadata",
-  "teamId": "3a9422a7-fbbf-455e-9c3c-da40e2e78ad9"
+  "description": "Payment services and shared repository metadata"
 }
 ```
 
-Project creation requires `CREATE_PROJECT` for the initial team. Project updates and team assignment require `MANAGE_PROJECT`, which Identity grants only to the existing `ADMIN` and `TEAM_LEAD` roles. The project list contains every project connected to any team where the authenticated user has `VIEW_PROJECT`. Unauthorized resources return `404` to avoid exposing whether they exist.
+Projects are created without a team, and the creator is their owner. Owners can view and manage their projects, including assigning the first team. Project updates and team assignment are also available through `MANAGE_PROJECT`, which Identity grants only to the existing `ADMIN` and `TEAM_LEAD` roles for assigned teams. The project list contains projects owned by the authenticated user and projects connected to teams where that user has `VIEW_PROJECT`. Projects may have zero or more teams. Unauthorized resources return `404` to avoid exposing whether they exist.
 
 ## Workstream API
 
@@ -180,7 +179,7 @@ Current migrations:
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
 
-Projects created before `V3` have no trustworthy team association and are intentionally not auto-assigned. Assign them through a controlled data migration with a verified team ID before enabling this version against existing production data. `V4` assigns existing workstreams only when their project has exactly one team; it stops instead of guessing when ownership is ambiguous.
+Projects created before `V3` remain accessible to their recorded creator and are intentionally not auto-assigned to a team. `V4` assigns existing workstreams only when their project has exactly one team; it stops instead of guessing when ownership is ambiguous.
 
 ## Package structure
 
