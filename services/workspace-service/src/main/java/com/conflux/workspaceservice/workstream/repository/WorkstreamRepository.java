@@ -13,17 +13,23 @@ import java.util.UUID;
 
 public interface WorkstreamRepository extends JpaRepository<Workstream, UUID> {
 
-    List<Workstream> findAllByProjectProjectIdOrderByCreatedAtDesc(UUID projectId);
+    boolean existsByProjectProjectIdAndTeamId(UUID projectId, UUID teamId);
 
-    Optional<Workstream> findByWorkstreamIdAndProjectProjectId(UUID workstreamId, UUID projectId);
+    List<Workstream> findAllByProjectProjectIdAndTeamIdOrderByCreatedAtDesc(
+            UUID projectId, UUID teamId);
+
+    Optional<Workstream> findByWorkstreamIdAndProjectProjectIdAndTeamId(
+            UUID workstreamId, UUID projectId, UUID teamId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT workstream FROM Workstream workstream
             WHERE workstream.workstreamId = :workstreamId
               AND workstream.project.projectId = :projectId
+              AND workstream.teamId = :teamId
             """)
     Optional<Workstream> findForUpdate(
             @Param("workstreamId") UUID workstreamId,
-            @Param("projectId") UUID projectId);
+            @Param("projectId") UUID projectId,
+            @Param("teamId") UUID teamId);
 }

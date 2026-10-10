@@ -1,13 +1,17 @@
 package com.conflux.workspaceservice.project.service;
 
+import com.conflux.workspaceservice.identity.client.TeamAuthorizationClient;
 import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
 import com.conflux.workspaceservice.project.entity.Project;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
+import com.conflux.workspaceservice.project.exception.ProjectConflictException;
 import com.conflux.workspaceservice.project.repository.ProjectRepository;
 import com.conflux.workspaceservice.project.repository.ProjectTeamRepository;
+import com.conflux.workspaceservice.workstream.repository.WorkstreamRepository;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,17 +26,21 @@ class ProjectServiceTests {
     private final ProjectRepository projects = mock(ProjectRepository.class);
     private final ProjectTeamRepository projectTeams = mock(ProjectTeamRepository.class);
     private final ProjectAuthorizationService authorization = mock(ProjectAuthorizationService.class);
-    private final ProjectService service = new ProjectService(projects, projectTeams, authorization);
+    private final TeamAuthorizationClient identity = mock(TeamAuthorizationClient.class);
+    private final WorkstreamRepository workstreams = mock(WorkstreamRepository.class);
+    private final ProjectService service =
+            new ProjectService(projects, projectTeams, authorization, identity, workstreams);
 
     @Test
-    void listIsScopedToVerifiedTeam() {
+    void listIsScopedToTeamsVisibleToUser() {
         UUID actorId = UUID.randomUUID();
         UUID teamId = UUID.randomUUID();
+        when(authorization.teamIdsWithCapability(actorId, TeamCapability.VIEW_PROJECT))
+                .thenReturn(List.of(teamId));
 
-        service.list(actorId, teamId);
+        service.list(actorId);
 
-        verify(authorization).requireTeamCapability(actorId, teamId, TeamCapability.VIEW_PROJECT);
-        verify(projects).findAllByTeamId(teamId);
+        verify(projects).findAllByTeamIds(List.of(teamId));
     }
 
     @Test
@@ -54,6 +62,24 @@ class ProjectServiceTests {
 
         assertThrows(ProjectNotFoundException.class,
                 () -> service.update(actorId, projectId, new UpdateProjectRequestDto("Renamed", null)));
+        verify(authorization).requireProjectCapability(
+                actorId, projectId, TeamCapability.MANAGE_PROJECT);
         verify(projects, never()).saveAndFlush(org.mockito.ArgumentMatchers.any(Project.class));
+    }
+
+    @Test
+    void teamWithWorkstreamsCannotBeRemoved() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(new Project()));
+        when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
+        when(projectTeams.countByProjectProjectId(projectId)).thenReturn(2L);
+        when(workstreams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
+
+        assertThrows(ProjectConflictException.class,
+                () -> service.removeTeam(actorId, projectId, teamId));
+
+        verify(projectTeams, never()).deleteByProjectProjectIdAndTeamId(projectId, teamId);
     }
 }

@@ -15,12 +15,12 @@ import java.util.UUID;
 public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     @Query("""
-            SELECT project FROM Project project
+            SELECT DISTINCT project FROM Project project
             JOIN ProjectTeam assignment ON assignment.project = project
-            WHERE assignment.teamId = :teamId
+            WHERE assignment.teamId IN :teamIds
             ORDER BY project.createdAt DESC
             """)
-    List<Project> findAllByTeamId(@Param("teamId") UUID teamId);
+    List<Project> findAllByTeamIds(@Param("teamIds") List<UUID> teamIds);
 
     Optional<Project> findByProjectId(UUID projectId);
 

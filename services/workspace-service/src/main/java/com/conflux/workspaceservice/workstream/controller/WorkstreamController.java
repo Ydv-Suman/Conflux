@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/projects/{projectId}/workstreams")
+@RequestMapping("/api/projects/{projectId}/teams/{teamId}/workstreams")
 public class WorkstreamController {
 
     private final WorkstreamService workstreams;
@@ -35,41 +35,48 @@ public class WorkstreamController {
     public ResponseEntity<WorkstreamDto> create(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID projectId,
+            @PathVariable UUID teamId,
             @Valid @RequestBody CreateWorkstreamRequestDto request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(workstreams.create(userId(jwt), projectId, request));
+                .body(workstreams.create(userId(jwt), projectId, teamId, request));
     }
 
     @GetMapping(version = "1.0")
     public List<WorkstreamDto> list(
-            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId) {
-        return workstreams.list(userId(jwt), projectId);
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID projectId,
+            @PathVariable UUID teamId) {
+        return workstreams.list(userId(jwt), projectId, teamId);
     }
 
     @GetMapping(path = "/{workstreamId}", version = "1.0")
     public WorkstreamDto get(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID projectId,
+            @PathVariable UUID teamId,
             @PathVariable UUID workstreamId) {
-        return workstreams.get(userId(jwt), projectId, workstreamId);
+        return workstreams.get(userId(jwt), projectId, teamId, workstreamId);
     }
 
     @PutMapping(path = "/{workstreamId}", version = "1.0")
     public WorkstreamDto update(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID projectId,
+            @PathVariable UUID teamId,
             @PathVariable UUID workstreamId,
             @Valid @RequestBody UpdateWorkstreamRequestDto request) {
-        return workstreams.update(userId(jwt), projectId, workstreamId, request);
+        return workstreams.update(userId(jwt), projectId, teamId, workstreamId, request);
     }
 
     @PutMapping(path = "/{workstreamId}/status", version = "1.0")
     public WorkstreamDto updateStatus(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID projectId,
+            @PathVariable UUID teamId,
             @PathVariable UUID workstreamId,
             @Valid @RequestBody UpdateWorkstreamStatusRequestDto request) {
-        return workstreams.updateStatus(userId(jwt), projectId, workstreamId, request.status());
+        return workstreams.updateStatus(
+                userId(jwt), projectId, teamId, workstreamId, request.status());
     }
 
     private UUID userId(Jwt jwt) {

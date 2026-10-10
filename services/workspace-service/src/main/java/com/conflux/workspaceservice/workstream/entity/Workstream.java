@@ -35,6 +35,9 @@ public class Workstream {
     @JoinColumn(name = "project_id", nullable = false, updatable = false)
     private Project project;
 
+    @Column(name = "team_id", nullable = false, updatable = false)
+    private UUID teamId;
+
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 

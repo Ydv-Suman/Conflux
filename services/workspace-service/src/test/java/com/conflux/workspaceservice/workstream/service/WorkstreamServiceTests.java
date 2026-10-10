@@ -32,25 +32,27 @@ class WorkstreamServiceTests {
     @Test
     void nonOwnerCannotListProjectWorkstreams() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         org.mockito.Mockito.doThrow(new ProjectNotFoundException()).when(authorization)
-                .requireProjectCapability(actorId, projectId,
+                .requireProjectTeamCapability(actorId, projectId, teamId,
                         com.conflux.workspaceservice.identity.model.TeamCapability.VIEW_PROJECT);
 
-        assertThrows(ProjectNotFoundException.class, () -> service.list(actorId, projectId));
+        assertThrows(ProjectNotFoundException.class, () -> service.list(actorId, projectId, teamId));
         verify(workstreams, never())
-                .findAllByProjectProjectIdOrderByCreatedAtDesc(projectId);
+                .findAllByProjectProjectIdAndTeamIdOrderByCreatedAtDesc(projectId, teamId);
     }
 
     @Test
     void nonOwnerCannotUpdateWorkstream() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(workstreams.findForUpdate(workstreamId, projectId)).thenReturn(Optional.empty());
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId)).thenReturn(Optional.empty());
 
         assertThrows(WorkstreamNotFoundException.class,
-                () -> service.update(actorId, projectId, workstreamId,
+                () -> service.update(actorId, projectId, teamId, workstreamId,
                         new UpdateWorkstreamRequestDto("Renamed")));
         verify(workstreams, never()).save(org.mockito.ArgumentMatchers.any(Workstream.class));
     }
@@ -58,28 +60,33 @@ class WorkstreamServiceTests {
     @Test
     void invalidLifecycleTransitionIsRejected() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.CREATED);
-        when(workstreams.findForUpdate(workstreamId, projectId))
+        Workstream workstream = workstream(
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.CREATED);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
                 () -> service.updateStatus(
-                        actorId, projectId, workstreamId, WorkstreamStatus.READY_TO_MERGE));
+                        actorId, projectId, teamId, workstreamId,
+                        WorkstreamStatus.READY_TO_MERGE));
         verify(workstreams, never()).save(workstream);
     }
 
     @Test
     void validLifecycleTransitionIsPersisted() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.CREATED);
-        when(workstreams.findForUpdate(workstreamId, projectId))
+        Workstream workstream = workstream(
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.CREATED);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
                 .thenReturn(Optional.of(workstream));
 
-        service.updateStatus(actorId, projectId, workstreamId, WorkstreamStatus.ACTIVE);
+        service.updateStatus(actorId, projectId, teamId, workstreamId, WorkstreamStatus.ACTIVE);
 
         assertEquals(WorkstreamStatus.ACTIVE, workstream.getStatus());
         verify(workstreams).save(workstream);
@@ -88,14 +95,16 @@ class WorkstreamServiceTests {
     @Test
     void mergedWorkstreamCannotBeRenamed() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.MERGED);
-        when(workstreams.findForUpdate(workstreamId, projectId))
+        Workstream workstream = workstream(
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.MERGED);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
-                () -> service.update(actorId, projectId, workstreamId,
+                () -> service.update(actorId, projectId, teamId, workstreamId,
                         new UpdateWorkstreamRequestDto("Renamed")));
         verify(workstreams, never()).save(workstream);
     }
@@ -103,26 +112,33 @@ class WorkstreamServiceTests {
     @Test
     void publicLifecycleCannotClaimMergeCompletion() {
         UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         Workstream workstream = workstream(
-                projectId, workstreamId, actorId, WorkstreamStatus.READY_TO_MERGE);
-        when(workstreams.findForUpdate(workstreamId, projectId))
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.READY_TO_MERGE);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
-                () -> service.updateStatus(actorId, projectId, workstreamId, WorkstreamStatus.MERGED));
+                () -> service.updateStatus(
+                        actorId, projectId, teamId, workstreamId, WorkstreamStatus.MERGED));
         verify(workstreams, never()).save(workstream);
     }
 
     private Workstream workstream(
-            UUID projectId, UUID workstreamId, UUID actorId, WorkstreamStatus status) {
+            UUID projectId,
+            UUID teamId,
+            UUID workstreamId,
+            UUID actorId,
+            WorkstreamStatus status) {
         Project project = new Project();
         project.setProjectId(projectId);
         project.setCreatedBy(actorId);
         Workstream workstream = new Workstream();
         workstream.setWorkstreamId(workstreamId);
         workstream.setProject(project);
+        workstream.setTeamId(teamId);
         workstream.setName("Authentication");
         workstream.setBranchName("feature/authentication");
         workstream.setBaseRevision("abcdef1");

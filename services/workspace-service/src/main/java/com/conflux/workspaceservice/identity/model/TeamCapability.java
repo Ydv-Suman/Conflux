@@ -9,5 +9,6 @@ public enum TeamCapability {
     APPROVE_CHANGE,
     MANAGE_TEAM,
     MANAGE_MEMBERS,
-    MANAGE_ROLES
+    MANAGE_ROLES,
+    MANAGE_PROJECT
 }

@@ -46,11 +46,14 @@ public class WorkstreamService {
     }
 
     @Transactional
-    public WorkstreamDto create(UUID actorId, UUID projectId, CreateWorkstreamRequestDto request) {
-        authorization.requireProjectCapability(actorId, projectId, TeamCapability.CREATE_WORKSTREAM);
+    public WorkstreamDto create(
+            UUID actorId, UUID projectId, UUID teamId, CreateWorkstreamRequestDto request) {
+        authorization.requireProjectTeamCapability(
+                actorId, projectId, teamId, TeamCapability.CREATE_WORKSTREAM);
         Project project = requireProject(projectId);
         Workstream workstream = new Workstream();
         workstream.setProject(project);
+        workstream.setTeamId(teamId);
         workstream.setName(request.name());
         workstream.setBranchName(request.branchName());
         workstream.setBaseRevision(request.baseRevision().toLowerCase());
@@ -71,25 +74,34 @@ public class WorkstreamService {
     }
 
     @Transactional(readOnly = true)
-    public List<WorkstreamDto> list(UUID actorId, UUID projectId) {
-        authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
+    public List<WorkstreamDto> list(UUID actorId, UUID projectId, UUID teamId) {
+        authorization.requireProjectTeamCapability(
+                actorId, projectId, teamId, TeamCapability.VIEW_PROJECT);
         requireProject(projectId);
-        return workstreams.findAllByProjectProjectIdOrderByCreatedAtDesc(projectId).stream()
+        return workstreams.findAllByProjectProjectIdAndTeamIdOrderByCreatedAtDesc(
+                        projectId, teamId).stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public WorkstreamDto get(UUID actorId, UUID projectId, UUID workstreamId) {
-        authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
-        return toDto(requireWorkstream(workstreamId, projectId));
+    public WorkstreamDto get(
+            UUID actorId, UUID projectId, UUID teamId, UUID workstreamId) {
+        authorization.requireProjectTeamCapability(
+                actorId, projectId, teamId, TeamCapability.VIEW_PROJECT);
+        return toDto(requireWorkstream(workstreamId, projectId, teamId));
     }
 
     @Transactional
     public WorkstreamDto update(
-            UUID actorId, UUID projectId, UUID workstreamId, UpdateWorkstreamRequestDto request) {
-        authorization.requireProjectCapability(actorId, projectId, TeamCapability.CREATE_WORKSTREAM);
-        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId);
+            UUID actorId,
+            UUID projectId,
+            UUID teamId,
+            UUID workstreamId,
+            UpdateWorkstreamRequestDto request) {
+        authorization.requireProjectTeamCapability(
+                actorId, projectId, teamId, TeamCapability.CREATE_WORKSTREAM);
+        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId, teamId);
         requireMutable(workstream);
         workstream.setName(request.name());
         workstreams.save(workstream);
@@ -100,12 +112,16 @@ public class WorkstreamService {
 
     @Transactional
     public WorkstreamDto updateStatus(
-            UUID actorId, UUID projectId, UUID workstreamId, WorkstreamStatus requestedStatus) {
+            UUID actorId,
+            UUID projectId,
+            UUID teamId,
+            UUID workstreamId,
+            WorkstreamStatus requestedStatus) {
         TeamCapability requiredCapability = requiresApproval(requestedStatus)
                 ? TeamCapability.APPROVE_CHANGE
                 : TeamCapability.CREATE_WORKSTREAM;
-        authorization.requireProjectCapability(actorId, projectId, requiredCapability);
-        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId);
+        authorization.requireProjectTeamCapability(actorId, projectId, teamId, requiredCapability);
+        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId, teamId);
         WorkstreamStatus currentStatus = workstream.getStatus();
         if (currentStatus == requestedStatus) {
             return toDto(workstream);
@@ -126,13 +142,15 @@ public class WorkstreamService {
                 .orElseThrow(ProjectNotFoundException::new);
     }
 
-    private Workstream requireWorkstream(UUID workstreamId, UUID projectId) {
-        return workstreams.findByWorkstreamIdAndProjectProjectId(workstreamId, projectId)
+    private Workstream requireWorkstream(UUID workstreamId, UUID projectId, UUID teamId) {
+        return workstreams.findByWorkstreamIdAndProjectProjectIdAndTeamId(
+                        workstreamId, projectId, teamId)
                 .orElseThrow(WorkstreamNotFoundException::new);
     }
 
-    private Workstream requireWorkstreamForUpdate(UUID workstreamId, UUID projectId) {
-        return workstreams.findForUpdate(workstreamId, projectId)
+    private Workstream requireWorkstreamForUpdate(
+            UUID workstreamId, UUID projectId, UUID teamId) {
+        return workstreams.findForUpdate(workstreamId, projectId, teamId)
                 .orElseThrow(WorkstreamNotFoundException::new);
     }
 
@@ -159,7 +177,8 @@ public class WorkstreamService {
 
     private WorkstreamDto toDto(Workstream workstream) {
         return new WorkstreamDto(workstream.getWorkstreamId(), workstream.getProject().getProjectId(),
-                workstream.getName(), workstream.getBranchName(), workstream.getBaseRevision(),
+                workstream.getTeamId(), workstream.getName(), workstream.getBranchName(),
+                workstream.getBaseRevision(),
                 workstream.getCurrentRevision(), workstream.getStatus(), workstream.getCreatedBy(),
                 workstream.getCreatedAt(), workstream.getUpdatedAt());
     }
