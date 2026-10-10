@@ -20,6 +20,11 @@ spring:
     baseline-on-migrate: true
 
 app:
+  identity:
+    grpc-target: ${IDENTITY_GRPC_TARGET:localhost:9090}
+    grpc-token: ${INTERNAL_GRPC_TOKEN}
+    grpc-deadline: ${IDENTITY_GRPC_DEADLINE:2s}
+    grpc-plaintext: ${IDENTITY_GRPC_PLAINTEXT:false}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   jwt:

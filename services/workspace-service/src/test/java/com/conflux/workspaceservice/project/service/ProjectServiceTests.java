@@ -1,9 +1,11 @@
 package com.conflux.workspaceservice.project.service;
 
+import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
 import com.conflux.workspaceservice.project.entity.Project;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.project.repository.ProjectRepository;
+import com.conflux.workspaceservice.project.repository.ProjectTeamRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -18,31 +20,37 @@ import static org.mockito.Mockito.when;
 class ProjectServiceTests {
 
     private final ProjectRepository projects = mock(ProjectRepository.class);
-    private final ProjectService service = new ProjectService(projects);
+    private final ProjectTeamRepository projectTeams = mock(ProjectTeamRepository.class);
+    private final ProjectAuthorizationService authorization = mock(ProjectAuthorizationService.class);
+    private final ProjectService service = new ProjectService(projects, projectTeams, authorization);
 
     @Test
-    void listIsScopedToAuthenticatedUser() {
+    void listIsScopedToVerifiedTeam() {
         UUID actorId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
 
-        service.list(actorId);
+        service.list(actorId, teamId);
 
-        verify(projects).findAllByCreatedByOrderByCreatedAtDesc(actorId);
+        verify(authorization).requireTeamCapability(actorId, teamId, TeamCapability.VIEW_PROJECT);
+        verify(projects).findAllByTeamId(teamId);
     }
 
     @Test
-    void nonOwnerCannotReadProject() {
+    void inaccessibleProjectCannotBeRead() {
         UUID projectId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(projects.findByProjectIdAndCreatedBy(projectId, actorId)).thenReturn(Optional.empty());
+        org.mockito.Mockito.doThrow(new ProjectNotFoundException()).when(authorization)
+                .requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
 
         assertThrows(ProjectNotFoundException.class, () -> service.get(actorId, projectId));
+        verify(projects, never()).findByProjectId(projectId);
     }
 
     @Test
-    void nonOwnerCannotUpdateProject() {
+    void missingAuthorizedProjectCannotBeUpdated() {
         UUID projectId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(projects.findByProjectIdAndCreatedBy(projectId, actorId)).thenReturn(Optional.empty());
+        when(projects.findByProjectId(projectId)).thenReturn(Optional.empty());
 
         assertThrows(ProjectNotFoundException.class,
                 () -> service.update(actorId, projectId, new UpdateProjectRequestDto("Renamed", null)));

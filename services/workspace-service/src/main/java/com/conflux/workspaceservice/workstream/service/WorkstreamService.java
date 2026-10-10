@@ -3,6 +3,8 @@ package com.conflux.workspaceservice.workstream.service;
 import com.conflux.workspaceservice.project.entity.Project;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.project.repository.ProjectRepository;
+import com.conflux.workspaceservice.project.service.ProjectAuthorizationService;
+import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.workstream.dto.CreateWorkstreamRequestDto;
 import com.conflux.workspaceservice.workstream.dto.UpdateWorkstreamRequestDto;
 import com.conflux.workspaceservice.workstream.dto.WorkstreamDto;
@@ -32,15 +34,21 @@ public class WorkstreamService {
 
     private final ProjectRepository projects;
     private final WorkstreamRepository workstreams;
+    private final ProjectAuthorizationService authorization;
 
-    public WorkstreamService(ProjectRepository projects, WorkstreamRepository workstreams) {
+    public WorkstreamService(
+            ProjectRepository projects,
+            WorkstreamRepository workstreams,
+            ProjectAuthorizationService authorization) {
         this.projects = projects;
         this.workstreams = workstreams;
+        this.authorization = authorization;
     }
 
     @Transactional
     public WorkstreamDto create(UUID actorId, UUID projectId, CreateWorkstreamRequestDto request) {
-        Project project = requireOwnedProject(projectId, actorId);
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.CREATE_WORKSTREAM);
+        Project project = requireProject(projectId);
         Workstream workstream = new Workstream();
         workstream.setProject(project);
         workstream.setName(request.name());
@@ -64,22 +72,24 @@ public class WorkstreamService {
 
     @Transactional(readOnly = true)
     public List<WorkstreamDto> list(UUID actorId, UUID projectId) {
-        requireOwnedProject(projectId, actorId);
-        return workstreams.findAllByProjectProjectIdAndProjectCreatedByOrderByCreatedAtDesc(
-                        projectId, actorId).stream()
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
+        requireProject(projectId);
+        return workstreams.findAllByProjectProjectIdOrderByCreatedAtDesc(projectId).stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public WorkstreamDto get(UUID actorId, UUID projectId, UUID workstreamId) {
-        return toDto(requireOwnedWorkstream(workstreamId, projectId, actorId));
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
+        return toDto(requireWorkstream(workstreamId, projectId));
     }
 
     @Transactional
     public WorkstreamDto update(
             UUID actorId, UUID projectId, UUID workstreamId, UpdateWorkstreamRequestDto request) {
-        Workstream workstream = requireOwnedWorkstreamForUpdate(workstreamId, projectId, actorId);
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.CREATE_WORKSTREAM);
+        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId);
         requireMutable(workstream);
         workstream.setName(request.name());
         workstreams.save(workstream);
@@ -91,7 +101,11 @@ public class WorkstreamService {
     @Transactional
     public WorkstreamDto updateStatus(
             UUID actorId, UUID projectId, UUID workstreamId, WorkstreamStatus requestedStatus) {
-        Workstream workstream = requireOwnedWorkstreamForUpdate(workstreamId, projectId, actorId);
+        TeamCapability requiredCapability = requiresApproval(requestedStatus)
+                ? TeamCapability.APPROVE_CHANGE
+                : TeamCapability.CREATE_WORKSTREAM;
+        authorization.requireProjectCapability(actorId, projectId, requiredCapability);
+        Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId);
         WorkstreamStatus currentStatus = workstream.getStatus();
         if (currentStatus == requestedStatus) {
             return toDto(workstream);
@@ -107,21 +121,23 @@ public class WorkstreamService {
         return toDto(workstream);
     }
 
-    private Project requireOwnedProject(UUID projectId, UUID actorId) {
-        return projects.findByProjectIdAndCreatedBy(projectId, actorId)
+    private Project requireProject(UUID projectId) {
+        return projects.findByProjectId(projectId)
                 .orElseThrow(ProjectNotFoundException::new);
     }
 
-    private Workstream requireOwnedWorkstream(UUID workstreamId, UUID projectId, UUID actorId) {
-        return workstreams.findByWorkstreamIdAndProjectProjectIdAndProjectCreatedBy(
-                        workstreamId, projectId, actorId)
+    private Workstream requireWorkstream(UUID workstreamId, UUID projectId) {
+        return workstreams.findByWorkstreamIdAndProjectProjectId(workstreamId, projectId)
                 .orElseThrow(WorkstreamNotFoundException::new);
     }
 
-    private Workstream requireOwnedWorkstreamForUpdate(
-            UUID workstreamId, UUID projectId, UUID actorId) {
-        return workstreams.findForUpdate(workstreamId, projectId, actorId)
+    private Workstream requireWorkstreamForUpdate(UUID workstreamId, UUID projectId) {
+        return workstreams.findForUpdate(workstreamId, projectId)
                 .orElseThrow(WorkstreamNotFoundException::new);
+    }
+
+    private boolean requiresApproval(WorkstreamStatus status) {
+        return status == WorkstreamStatus.READY_TO_MERGE || status == WorkstreamStatus.CONFLICT;
     }
 
     private void requireMutable(Workstream workstream) {

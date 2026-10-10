@@ -3,6 +3,7 @@ package com.conflux.workspaceservice.workstream.service;
 import com.conflux.workspaceservice.project.entity.Project;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.project.repository.ProjectRepository;
+import com.conflux.workspaceservice.project.service.ProjectAuthorizationService;
 import com.conflux.workspaceservice.workstream.dto.UpdateWorkstreamRequestDto;
 import com.conflux.workspaceservice.workstream.entity.Workstream;
 import com.conflux.workspaceservice.workstream.entity.WorkstreamStatus;
@@ -25,17 +26,20 @@ class WorkstreamServiceTests {
 
     private final ProjectRepository projects = mock(ProjectRepository.class);
     private final WorkstreamRepository workstreams = mock(WorkstreamRepository.class);
-    private final WorkstreamService service = new WorkstreamService(projects, workstreams);
+    private final ProjectAuthorizationService authorization = mock(ProjectAuthorizationService.class);
+    private final WorkstreamService service = new WorkstreamService(projects, workstreams, authorization);
 
     @Test
     void nonOwnerCannotListProjectWorkstreams() {
         UUID projectId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(projects.findByProjectIdAndCreatedBy(projectId, actorId)).thenReturn(Optional.empty());
+        org.mockito.Mockito.doThrow(new ProjectNotFoundException()).when(authorization)
+                .requireProjectCapability(actorId, projectId,
+                        com.conflux.workspaceservice.identity.model.TeamCapability.VIEW_PROJECT);
 
         assertThrows(ProjectNotFoundException.class, () -> service.list(actorId, projectId));
         verify(workstreams, never())
-                .findAllByProjectProjectIdAndProjectCreatedByOrderByCreatedAtDesc(projectId, actorId);
+                .findAllByProjectProjectIdOrderByCreatedAtDesc(projectId);
     }
 
     @Test
@@ -43,7 +47,7 @@ class WorkstreamServiceTests {
         UUID projectId = UUID.randomUUID();
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(workstreams.findForUpdate(workstreamId, projectId, actorId)).thenReturn(Optional.empty());
+        when(workstreams.findForUpdate(workstreamId, projectId)).thenReturn(Optional.empty());
 
         assertThrows(WorkstreamNotFoundException.class,
                 () -> service.update(actorId, projectId, workstreamId,
@@ -57,7 +61,7 @@ class WorkstreamServiceTests {
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.CREATED);
-        when(workstreams.findForUpdate(workstreamId, projectId, actorId))
+        when(workstreams.findForUpdate(workstreamId, projectId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
@@ -72,7 +76,7 @@ class WorkstreamServiceTests {
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.CREATED);
-        when(workstreams.findForUpdate(workstreamId, projectId, actorId))
+        when(workstreams.findForUpdate(workstreamId, projectId))
                 .thenReturn(Optional.of(workstream));
 
         service.updateStatus(actorId, projectId, workstreamId, WorkstreamStatus.ACTIVE);
@@ -87,7 +91,7 @@ class WorkstreamServiceTests {
         UUID workstreamId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         Workstream workstream = workstream(projectId, workstreamId, actorId, WorkstreamStatus.MERGED);
-        when(workstreams.findForUpdate(workstreamId, projectId, actorId))
+        when(workstreams.findForUpdate(workstreamId, projectId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
@@ -103,7 +107,7 @@ class WorkstreamServiceTests {
         UUID actorId = UUID.randomUUID();
         Workstream workstream = workstream(
                 projectId, workstreamId, actorId, WorkstreamStatus.READY_TO_MERGE);
-        when(workstreams.findForUpdate(workstreamId, projectId, actorId))
+        when(workstreams.findForUpdate(workstreamId, projectId))
                 .thenReturn(Optional.of(workstream));
 
         assertThrows(WorkstreamConflictException.class,
