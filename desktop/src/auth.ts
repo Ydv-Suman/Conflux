@@ -127,3 +127,29 @@ export const authenticatedRequest = async <T = void>(
     return request<T>(path, method, { body, token: accessToken! });
   }
 };
+
+export const authenticatedServiceRequest = async <T = void>(
+  baseUrl: string,
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  body?: object,
+) => {
+  if (!accessToken && !(await restoreSession())) {
+    throw new ApiError('Your session has expired. Please log in again.', 401, null);
+  }
+
+  const send = () => request<T>(path, method, {
+    body,
+    token: accessToken!,
+    baseUrl,
+    credentials: 'omit',
+  });
+  try {
+    return await send();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401 || !(await restoreSession())) {
+      throw error;
+    }
+    return send();
+  }
+};

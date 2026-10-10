@@ -13,7 +13,7 @@ export const homeView = () => `
     <nav class="activity-rail fixed inset-y-0 left-0 z-20 flex w-12 flex-col items-center border-r border-[#d8d6ce] bg-[#efede6] py-1" aria-label="Primary navigation">
       <img class="mt-1 size-8 rounded-[9px] object-cover" src="${projectIconUrl}" alt="Conflux">
       <div class="mt-auto grid gap-1">
-        <button class="rail-button" id="teams-button" type="button" aria-label="Teams" aria-pressed="true" title="Teams">
+        <button class="rail-button" id="projects-button" type="button" aria-label="Projects" aria-pressed="true" title="Projects">
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3.5 19c.5-3.7 2.3-5.5 5.5-5.5s5 1.8 5.5 5.5M14 15c3.8-.5 5.9.8 6.5 4"/></svg>
         </button>
         <button class="rail-button" id="profile-button" type="button" aria-label="Profile" title="Profile">

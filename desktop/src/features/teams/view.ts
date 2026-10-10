@@ -103,7 +103,7 @@ export const teamsView = (
                 <span class="truncate">${escapeHtml(team.name)}</span>
               </button>`).join('')}
           </nav>
-          ${futureSection('Workstreams', 'Requires the Workspace Service')}
+          ${futureSection('Workstreams', 'Select a project before opening workstreams')}
           ${futureSection('Project chat', 'Requires project membership and the Collaboration Service')}
           <button class="neutral-button-filled mt-3 w-full" id="open-create-team" type="button">Create team</button>
         </div>
@@ -124,7 +124,7 @@ export const teamsView = (
                 <button class="neutral-button" id="close-team-detail" type="button">Close</button>
               </div>
             </div>
-            <p class="mb-0 mt-2 text-sm text-[#6d716b]">Manage members, roles, and team access.</p>
+            ${selected.description ? `<p class="mb-0 mt-2 max-w-[70ch] text-sm leading-relaxed text-[#6d716b]">${escapeHtml(selected.description)}</p>` : ''}
           </div>
         </header>
         ${sectionContent}
@@ -153,6 +153,7 @@ export const teamSettingsView = (
         ${canEditTeam ? `
           <form class="grid gap-4" id="update-team-form">
             <label class="field-label">Team name<input class="field-input" name="name" maxlength="100" required value="${escapeHtml(team.name)}"></label>
+            <label class="field-label">Description <span>(optional)</span><textarea class="field-input min-h-24 resize-y" name="description" maxlength="500">${escapeHtml(team.description ?? '')}</textarea></label>
             <button class="neutral-button-filled" data-label="Save team" type="submit">Save team</button>
             <output class="hidden text-xs text-[#7f342e]" id="update-team-message" role="alert"></output>
           </form>` : `
@@ -218,6 +219,7 @@ function createTeamForm() {
   return `
     <form class="grid gap-3" data-create-team-form>
       <label class="field-label">Team name<input class="field-input" name="name" maxlength="100" required placeholder="Payments Platform"></label>
+      <label class="field-label">Description <span>(optional)</span><textarea class="field-input min-h-24 resize-y" name="description" maxlength="500" placeholder="What this team owns"></textarea></label>
       <button class="neutral-button-filled" data-label="Create team" type="submit">Create team</button>
       <output class="hidden text-xs text-[#7f342e]" data-team-create-message role="alert"></output>
     </form>`;
