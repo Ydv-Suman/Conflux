@@ -38,8 +38,9 @@ import {
   type UserRole,
 } from './features/teams/api';
 import {
+  addTeamMemberPanelView,
   createTeamPanelView,
-  teamSettingsView,
+  editTeamPanelView,
 } from './features/teams/view';
 import {
   assignProjectTeam,
@@ -48,12 +49,14 @@ import {
   listProjectTeams,
   listProjects,
   listWorkstreams,
+  removeProjectTeam,
   updateProject,
   type Project,
   type ProjectTeam,
   type Workstream,
 } from './features/projects/api';
 import {
+  assignProjectTeamPanelView,
   projectPanelView,
   projectsErrorView,
   projectsLoadingView,
@@ -278,7 +281,21 @@ const showProfilePanel = (content: string, activeButton = 'profile-button') => {
   panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeAccountPanel);
 };
 
-const showTeamSettingsPanel = (
+const showEditTeamPanel = (
+  team: Team,
+  members: TeamMember[],
+) => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = editTeamPanelView(team);
+  panel.classList.remove('hidden');
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  bindTeamAdminControls(team, members);
+};
+
+const showAddTeamMemberPanel = (
   team: Team,
   members: TeamMember[],
   capabilities: TeamCapabilities,
@@ -286,7 +303,7 @@ const showTeamSettingsPanel = (
   const panel = document.querySelector<HTMLElement>('#account-panel');
   const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
   if (!panel || !backdrop) return;
-  panel.innerHTML = teamSettingsView(team, members, capabilities);
+  panel.innerHTML = addTeamMemberPanelView(capabilities);
   panel.classList.remove('hidden');
   backdrop.classList.remove('hidden');
   panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
@@ -313,6 +330,34 @@ const showProjectPanel = (project?: Project) => {
   backdrop.classList.remove('hidden');
   panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
   bindProjectForm(panel, project);
+};
+
+const showAssignProjectTeamPanel = (project: Project, teams: Team[]) => {
+  const panel = document.querySelector<HTMLElement>('#account-panel');
+  const backdrop = document.querySelector<HTMLElement>('#account-backdrop');
+  if (!panel || !backdrop) return;
+  panel.innerHTML = assignProjectTeamPanelView(teams);
+  panel.classList.remove('hidden');
+  backdrop.classList.remove('hidden');
+  panel.querySelector<HTMLButtonElement>('.panel-close')?.addEventListener('click', closeDialog);
+  const form = panel.querySelector<HTMLFormElement>('#assign-project-team-form');
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setSubmitting(form, true);
+    try {
+      const data = new FormData(form);
+      await assignProjectTeam(project.projectId, String(data.get('teamId')));
+      closeDialog();
+      await loadProjectWorkspace(project.projectId, null);
+    } catch (error) {
+      const output = form.querySelector<HTMLOutputElement>('#assign-project-team-message');
+      if (output) {
+        output.textContent = projectErrorMessage(error);
+        output.classList.remove('hidden');
+      }
+      setSubmitting(form, false);
+    }
+  });
 };
 
 const showWorkstreamPanel = (project: Project, team: ProjectTeam) => {
@@ -709,6 +754,7 @@ const bindProjectWorkspace = (
   identityTeam: Team | null,
   members: TeamMember[],
   capabilities: TeamCapabilities | null,
+  assignableTeams: Team[],
 ) => {
   document.querySelectorAll<HTMLButtonElement>('.project-switch').forEach((button) => {
     button.addEventListener('click', () => {
@@ -727,14 +773,42 @@ const bindProjectWorkspace = (
     });
   });
 
-  document.querySelector('#open-team-settings')?.addEventListener('click', () => {
-    if (identityTeam && capabilities) showTeamSettingsPanel(identityTeam, members, capabilities);
+  document.querySelector('#open-edit-team')?.addEventListener('click', () => {
+    if (identityTeam) showEditTeamPanel(identityTeam, members);
+  });
+
+  document.querySelector('#open-add-member')?.addEventListener('click', () => {
+    if (identityTeam && capabilities) {
+      showAddTeamMemberPanel(identityTeam, members, capabilities);
+    }
   });
 
   document.querySelectorAll('.open-create-team').forEach((button) => {
     button.addEventListener('click', () => {
       if (activeProject) showCreateTeamPanel(activeProject.projectId);
     });
+  });
+
+  document.querySelector('#open-assign-team')?.addEventListener('click', () => {
+    if (activeProject && assignableTeams.length) {
+      showAssignProjectTeamPanel(activeProject, assignableTeams);
+    }
+  });
+
+  document.querySelector('#remove-project-team')?.addEventListener('click', async () => {
+    if (!activeProject || !activeTeam) return;
+    const confirmed = await confirmAction(
+      'Remove team from project?',
+      `Remove ${activeTeam.name} from ${activeProject.name}?`,
+      'Remove team',
+    );
+    if (!confirmed) return;
+    try {
+      await removeProjectTeam(activeProject.projectId, activeTeam.teamId);
+      await loadProjectWorkspace(activeProject.projectId, null);
+    } catch (error) {
+      showMessage(projectErrorMessage(error));
+    }
   });
 
   document.querySelector('#open-create-project')?.addEventListener('click', () => {
@@ -752,6 +826,8 @@ const bindProjectWorkspace = (
   document.querySelector('#open-create-workstream')?.addEventListener('click', () => {
     if (activeProject && activeTeam) showWorkstreamPanel(activeProject, activeTeam);
   });
+
+  if (identityTeam) bindTeamAdminControls(identityTeam, members);
 };
 
 const loadProjectWorkspace = async (
@@ -783,16 +859,21 @@ const loadProjectWorkspace = async (
         listWorkstreams(activeProject.projectId, activeTeam.teamId),
       ]);
     }
-    const canManageProject = projectTeams.some((team) => {
-      const owned = teams.find((candidate) => candidate.teamId === team.teamId);
-      return owned ? ['ADMIN', 'TEAM_LEAD'].includes(owned.role) : false;
-    });
+    const canManageProject = activeProject?.createdBy === getCurrentUser()?.id
+      || projectTeams.some((team) => {
+        const owned = teams.find((candidate) => candidate.teamId === team.teamId);
+        return owned ? ['ADMIN', 'TEAM_LEAD'].includes(owned.role) : false;
+      });
+    const assignableTeams = canManageProject ? teams.filter((team) =>
+      ['ADMIN', 'TEAM_LEAD'].includes(team.role)
+      && !projectTeams.some((assigned) => assigned.teamId === team.teamId)) : [];
     setTeamWorkspace(projectWorkspaceView(
       projects, activeProject, projectTeams, activeTeam, identityTeam, members,
-      capabilities, workstreams, true, canManageProject,
+      capabilities, workstreams, true, canManageProject, assignableTeams,
     ));
     bindProjectWorkspace(
       activeProject, projectTeams, activeTeam, identityTeam, members, capabilities,
+      assignableTeams,
     );
   } catch (error) {
     setTeamWorkspace(projectsErrorView(
@@ -920,6 +1001,13 @@ const render = () => {
 
 export const startApp = () => {
   window.addEventListener('popstate', render);
+  window.addEventListener('focus', () => {
+    if (location.pathname === '/app'
+      && isAuthenticated()
+      && activeActivityPanel === 'projects-button') {
+      void loadProjectWorkspace();
+    }
+  });
   app.innerHTML = loadingView;
   void restoreSession().finally(render);
 };

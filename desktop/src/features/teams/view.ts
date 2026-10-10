@@ -65,9 +65,7 @@ export const teamsView = (
       </div>`;
   }
 
-  const canManageTeam = hasCapability(capabilities, 'MANAGE_MEMBERS')
-    || hasCapability(capabilities, 'MANAGE_ROLES')
-    || hasCapability(capabilities, 'MANAGE_TEAM');
+  const canEditTeam = hasCapability(capabilities, 'MANAGE_TEAM');
 
   const futureSection = (label: string, reason: string) => `
     <button class="team-section-link" type="button" disabled title="${reason}">${label}<span class="team-section-status">Soon</span></button>`;
@@ -117,10 +115,14 @@ export const teamsView = (
         <header class="border-b border-[#d8d6ce] px-6 py-6">
           <div>
             <div class="flex items-center justify-between gap-4">
-              <h2 class="m-0 min-w-0 truncate text-3xl font-bold tracking-[-.04em]">${escapeHtml(selected.name)}</h2>
+              <div class="flex min-w-0 items-center gap-2">
+                <h2 class="m-0 min-w-0 truncate text-3xl font-bold tracking-[-.04em]">${escapeHtml(selected.name)}</h2>
+                ${canEditTeam ? `
+                  <button class="inline-edit shrink-0 rounded-lg" id="open-edit-team" type="button" aria-label="Edit team" title="Edit team">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>
+                  </button>` : ''}
+              </div>
               <div class="flex shrink-0 items-center gap-2">
-                ${canManageTeam ? `
-                  <button class="neutral-button" id="open-team-settings" type="button" aria-label="Edit ${escapeHtml(selected.name)}">Edit team</button>` : ''}
                 <button class="neutral-button" id="close-team-detail" type="button">Close</button>
               </div>
             </div>
@@ -132,78 +134,65 @@ export const teamsView = (
     </div>`;
 };
 
-export const teamSettingsView = (
-  team: Team,
+export const teamMemberListView = (
   members: TeamMember[],
   capabilities: TeamCapabilities,
 ) => {
-  const canAdd = hasCapability(capabilities, 'MANAGE_MEMBERS');
+  const canRemove = hasCapability(capabilities, 'MANAGE_MEMBERS');
   const canChangeRoles = hasCapability(capabilities, 'MANAGE_ROLES');
-  const canEditTeam = hasCapability(capabilities, 'MANAGE_TEAM');
   const availableRoles = assignableRoles(capabilities);
 
   return `
-    <header class="relative px-14 pb-4 pt-8 text-center">
-      <h2 class="m-0 text-3xl font-bold tracking-[-.04em]">${escapeHtml(team.name)}</h2>
-      <button class="panel-close absolute right-5 top-5" type="button" aria-label="Close team settings">×</button>
-    </header>
-    <output class="mx-7 mt-5 hidden border-l-3 border-[#a54d45] bg-[#f8eae7] px-3 py-2 text-xs text-[#7f342e]" id="team-settings-message" role="alert"></output>
-    <div class="grid gap-7 p-7">
-      <section>
-        ${canEditTeam ? `
-          <form class="grid gap-4" id="update-team-form">
-            <label class="field-label">Team name<input class="field-input" name="name" maxlength="100" required value="${escapeHtml(team.name)}"></label>
-            <label class="field-label">Description <span>(optional)</span><textarea class="field-input min-h-24 resize-y" name="description" maxlength="500">${escapeHtml(team.description ?? '')}</textarea></label>
-            <button class="neutral-button-filled" data-label="Save team" type="submit">Save team</button>
-            <output class="hidden text-xs text-[#7f342e]" id="update-team-message" role="alert"></output>
-          </form>` : `
-          <div class="grid gap-1 border-l-2 border-[#66707c] pl-4">
-            <strong class="text-sm">${escapeHtml(team.name)}</strong>
-            <span class="text-xs text-[#6d716b]">Your role: ${roleLabel(capabilities.role)}</span>
-          </div>`}
-      </section>
-
-      ${canAdd ? `
-        <section class="pt-2">
-          <h3 class="mb-4 mt-0 text-center text-lg font-semibold tracking-[-.02em]">Add member</h3>
-          <form class="grid w-full gap-4" id="add-team-member-form">
-            <label class="field-label">Email<input class="field-input" name="email" type="email" maxlength="100" autocomplete="off" required placeholder="developer@company.com"></label>
-            <label class="field-label w-full">Role<select class="field-input h-12 w-full px-3 text-sm" name="role" required>${roleOptions(availableRoles)}</select></label>
-            <button class="neutral-button-filled justify-self-center" data-label="Add" type="submit">Add</button>
-            <output class="hidden text-xs text-[#7f342e]" id="team-form-message" role="alert"></output>
-          </form>
-        </section>` : ''}
-
-      <section class="pt-2">
-        <h3 class="mb-3 mt-0 text-center text-lg font-semibold tracking-[-.02em]">Members & roles</h3>
-        <div class="grid gap-2">
-          ${members.map((member) => {
-            const manageable = canManageMember(capabilities, member);
-            return `
-              <article class="py-4" data-member-id="${member.userId}">
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <div class="flex min-w-0 items-center gap-2">
-                      <strong class="member-full-name truncate text-sm font-semibold">${escapeHtml(memberName(member))}</strong>
-                      <span class="shrink-0 text-xs text-[#59616c]">${roleLabel(member.role)}</span>
-                      ${canChangeRoles && manageable ? `
-                        <button class="panel-action edit-member-role shrink-0 rounded-lg" type="button" aria-label="Edit role for ${escapeHtml(member.username)}" aria-expanded="false" title="Edit role">
-                          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>
-                        </button>` : ''}
-                    </div>
-                    <span class="mt-1 block truncate text-xs text-[#6d716b]">@${escapeHtml(member.username)} · Joined ${new Date(member.joinedAt).toLocaleDateString()}</span>
-                  </div>
-                  ${canAdd && manageable ? `<button class="danger-button danger-button-compact remove-member shrink-0" type="button">Remove</button>` : ''}
+    <output class="hidden border-l-3 border-[#a54d45] bg-[#f8eae7] px-3 py-2 text-xs text-[#7f342e]" id="team-settings-message" role="alert"></output>
+    <div class="divide-y divide-[#d8d6ce]">
+      ${members.map((member) => {
+        const manageable = canManageMember(capabilities, member);
+        return `
+          <article class="py-4" data-member-id="${member.userId}">
+            <div class="flex items-center justify-between gap-4">
+              <div class="min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <strong class="member-full-name truncate text-sm font-semibold">${escapeHtml(memberName(member))}</strong>
+                  <span class="shrink-0 text-xs text-[#59616c]">${roleLabel(member.role)}</span>
+                  ${canChangeRoles && manageable ? `
+                    <button class="panel-action edit-member-role shrink-0 rounded-lg" type="button" aria-label="Edit role for ${escapeHtml(member.username)}" aria-expanded="false" title="Edit role">
+                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>
+                    </button>` : ''}
                 </div>
-                ${canChangeRoles && manageable ? `
-                  <select class="field-input member-role mt-3 hidden h-12 w-full text-sm" aria-label="Role for ${escapeHtml(member.username)}">${roleOptions(availableRoles, member.role)}</select>` : ''}
-              </article>`;
-          }).join('')}
-        </div>
-      </section>
-
+                <span class="mt-1 block truncate text-xs text-[#6d716b]">@${escapeHtml(member.username)} · Joined ${new Date(member.joinedAt).toLocaleDateString()}</span>
+              </div>
+              ${canRemove && manageable ? `<button class="danger-button danger-button-compact remove-member shrink-0" type="button">Remove</button>` : ''}
+            </div>
+            ${canChangeRoles && manageable ? `
+              <select class="field-input member-role mt-3 hidden h-12 w-full text-sm" aria-label="Role for ${escapeHtml(member.username)}">${roleOptions(availableRoles, member.role)}</select>` : ''}
+          </article>`;
+      }).join('')}
     </div>`;
 };
+
+export const editTeamPanelView = (team: Team) => `
+  <header class="flex items-center justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8">
+    <h2 class="m-0 text-3xl font-bold tracking-[-.04em]">Edit team</h2>
+    <button class="panel-close" type="button" aria-label="Close edit team panel">×</button>
+  </header>
+  <form class="grid gap-4 p-7" id="update-team-form">
+    <label class="field-label">Team name<input class="field-input" name="name" maxlength="100" required value="${escapeHtml(team.name)}"></label>
+    <label class="field-label">Description (optional)<textarea class="field-input min-h-24 resize-y" name="description" maxlength="500">${escapeHtml(team.description ?? '')}</textarea></label>
+    <button class="neutral-button-filled justify-self-center" data-label="Save team" type="submit">Save team</button>
+    <output class="hidden text-xs text-[#7f342e]" id="update-team-message" role="alert"></output>
+  </form>`;
+
+export const addTeamMemberPanelView = (capabilities: TeamCapabilities) => `
+  <header class="flex items-center justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8">
+    <h2 class="m-0 text-3xl font-bold tracking-[-.04em]">Add member</h2>
+    <button class="panel-close" type="button" aria-label="Close add member panel">×</button>
+  </header>
+  <form class="grid gap-4 p-7" id="add-team-member-form">
+    <label class="field-label">Email<input class="field-input" name="email" type="email" maxlength="100" autocomplete="off" required placeholder="developer@company.com"></label>
+    <label class="field-label">Role<select class="field-input h-12 w-full px-3 text-sm" name="role" required>${roleOptions(assignableRoles(capabilities))}</select></label>
+    <button class="neutral-button-filled justify-self-center" data-label="Add" type="submit">Add</button>
+    <output class="hidden text-xs text-[#7f342e]" id="team-form-message" role="alert"></output>
+  </form>`;
 
 export const createTeamPanelView = `
   <header class="flex items-start justify-between border-b border-[#d8d6ce] px-7 pb-6 pt-8">

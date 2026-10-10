@@ -32,6 +32,10 @@
   textarea {
     font: inherit;
   }
+
+  .password-input::-webkit-caps-lock-indicator {
+    display: none;
+  }
 }
 
 @layer components {

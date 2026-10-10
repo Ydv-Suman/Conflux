@@ -59,6 +59,13 @@ export const assignProjectTeam = (projectId: string, teamId: string) =>
     { teamId },
   );
 
+export const removeProjectTeam = (projectId: string, teamId: string) =>
+  authenticatedServiceRequest<void>(
+    WORKSPACE_API_URL,
+    `/api/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(teamId)}`,
+    'DELETE',
+  );
+
 export const createProject = (name: string, description: string) =>
   authenticatedServiceRequest<Project>(WORKSPACE_API_URL, '/api/projects', 'POST', {
     name,

@@ -52,7 +52,7 @@ export const passwordField = (
 ) => `
   <span class="relative block">
     <input
-      class="${inputClass} pr-12"
+      class="password-input ${inputClass} pr-12"
       name="${name}"
       type="password"
       autocomplete="${autocomplete}"
