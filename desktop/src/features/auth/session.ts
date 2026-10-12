@@ -1,4 +1,4 @@
-import { ApiError, post, request } from './api';
+import { ApiError, post, request } from '../../api';
 
 type TokenResponse = {
   accessToken: string;

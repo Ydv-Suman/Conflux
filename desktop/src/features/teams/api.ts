@@ -1,4 +1,4 @@
-import { authenticatedPost, authenticatedRequest } from '../../auth';
+import { authenticatedPost, authenticatedRequest } from '../auth/session';
 
 export type UserRole =
   | 'ADMIN'

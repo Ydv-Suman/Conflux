@@ -49,9 +49,10 @@ CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
 
 The repository currently contains:
 
-- a Tauri 2 desktop client with authentication and account management
-- a Java/Spring Boot identity service
-- no implemented collaborative editor, Yjs transport, collaboration service, workstream manager, or agent service yet
+- a Tauri 2 + React + TypeScript desktop client with authentication, teams, projects, and workstream management
+- Java/Spring Boot identity and workspace services
+- a Java/Spring WebFlux collaboration-service prototype that relays opaque binary updates by project, workstream, and document and replays in-memory history after reconnect
+- no implemented Monaco editor, Yjs client binding, durable collaboration persistence, or agent service yet
 
 The next implementation milestone is therefore a narrow multiplayer-editor proof, not another business service.
 
