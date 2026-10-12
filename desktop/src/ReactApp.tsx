@@ -9,7 +9,7 @@ import {
   logout,
   restoreSession,
   type UserProfile,
-} from './auth';
+} from './features/auth/session';
 import { API_URL, OAUTH_PATH } from './config';
 import githubIcon from './assets/icons/github.svg';
 import googleIcon from './assets/icons/google.svg';

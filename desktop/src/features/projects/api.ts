@@ -1,4 +1,4 @@
-import { authenticatedServiceRequest } from '../../auth';
+import { authenticatedServiceRequest } from '../auth/session';
 import { WORKSPACE_API_URL } from '../../config';
 
 export type Project = {
