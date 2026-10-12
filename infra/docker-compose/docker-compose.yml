@@ -76,4 +76,3 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_started
-
