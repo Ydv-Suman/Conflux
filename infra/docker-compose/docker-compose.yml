@@ -1,0 +1,78 @@
+name: conflux
+
+services:
+  database:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
+    ports:
+      - "5432:5432"
+      - "5431:5432"
+    volumes:
+      - ${POSTGRES_DATA_PATH:-/Users/sumanyadav/Desktop/pgdata}:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identity-service:
+    build:
+      context: ../../services/identity-service
+    environment:
+      DB_URL: jdbc:postgresql://database:5432/identityDB
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
+      JWT_ISSUER: ${JWT_ISSUER:-http://localhost:8080}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-conflux-api}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      JWT_PUBLIC_KEY: file:/run/secrets/conflux/jwt-public.pem
+      JWT_PRIVATE_KEY: file:/run/secrets/conflux/jwt-private.pem
+      INTERNAL_GRPC_TOKEN: ${INTERNAL_GRPC_TOKEN:-local-development-internal-token-123456}
+      MAIL_HOST: ${MAIL_HOST:-smtp-relay.brevo.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@conflux.local}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      EMAIL_VERIFICATION_TTL: ${EMAIL_VERIFICATION_TTL:-24h}
+      AUTH_SECURE_COOKIES: ${AUTH_SECURE_COOKIES:-false}
+      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-Strict}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      FORWARD_HEADERS_STRATEGY: ${FORWARD_HEADERS_STRATEGY:-none}
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ../../services/identity-service/secrets/jwt-public.pem:/run/secrets/conflux/jwt-public.pem:ro
+      - ../../services/identity-service/secrets/jwt-private.pem:/run/secrets/conflux/jwt-private.pem:ro
+    depends_on:
+      database:
+        condition: service_healthy
+
+  workspace-service:
+    build:
+      context: ../../services/workspace-service
+    environment:
+      DB_URL: jdbc:postgresql://database:5432/workspaceDB
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
+      JWT_ISSUER: ${JWT_ISSUER:-http://localhost:8080}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-conflux-api}
+      JWT_PUBLIC_KEY: file:/run/secrets/conflux/jwt-public.pem
+      IDENTITY_GRPC_TARGET: identity-service:9090
+      IDENTITY_GRPC_PLAINTEXT: "true"
+      INTERNAL_GRPC_TOKEN: ${INTERNAL_GRPC_TOKEN:-local-development-internal-token-123456}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      FORWARD_HEADERS_STRATEGY: ${FORWARD_HEADERS_STRATEGY:-none}
+    ports:
+      - "9000:9000"
+    volumes:
+      - ../../services/identity-service/secrets/jwt-public.pem:/run/secrets/conflux/jwt-public.pem:ro
+    depends_on:
+      database:
+        condition: service_healthy
+      identity-service:
+        condition: service_started

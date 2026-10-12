@@ -1,2 +1,6 @@
 /docs/TODO.md
 /docs/Conflux_architecture.pdf
+services/.idea/
+secrets/
+.env
+infra/docker-compose/.env
