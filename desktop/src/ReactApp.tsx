@@ -45,6 +45,7 @@ import { CollaborativeEditor } from './features/editor/CollaborativeEditor';
 import { RepositoryExplorer } from './features/repository/RepositoryExplorer';
 import {
   connectRepository,
+  createWorktree,
   isDesktop,
   loadLastWorkspace,
   readRepositoryFile,
@@ -69,7 +70,7 @@ type Dialog =
   | { kind: 'profile'; profile: UserProfile }
   | null;
 type Confirmation = { title: string; message: string; label: string; action: () => Promise<void> } | null;
-type RequestError = { title: string; message: string } | null;
+type RequestError = { title: string; message: string; actionLabel?: string; action?: () => Promise<void> } | null;
 
 const fieldClass = 'grid gap-2 text-xs font-semibold text-[#30342f]';
 const inputClass = 'h-11 w-full rounded-lg border border-[#c9c9c1] bg-[#fffefa] px-3 text-sm font-normal text-[#1d211e] outline-none transition duration-200 placeholder:text-[#969990] hover:border-[#999d96] focus:border-[#66707c] focus:ring-3 focus:ring-[#66707c]/15';
@@ -186,7 +187,7 @@ function EntityForm({ initial, labels, busy, notice, onSubmit }: { initial?: { n
 
 const branchFromName = (name: string) => `feature/${name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-work'}`;
 
-function StartWorkForm({ repository, unavailableBranches, busy, onConnect, onSubmit }: { repository: RepositoryInfo | null; unavailableBranches: string[]; busy: boolean; onConnect: () => void; onSubmit: (name: string, branchName: string, baseRevision: string) => void }) {
+function StartWorkForm({ repository, unavailableBranches, busy, onConnect, onSubmit }: { repository: RepositoryInfo | null; unavailableBranches: string[]; busy: boolean; onConnect: () => void; onSubmit: (name: string, branchName: string, baseRevision: string, createBranch: boolean) => void }) {
   const [name, setName] = useState('');
   const [branchMode, setBranchMode] = useState<'new' | 'existing'>('new');
   const [branchName, setBranchName] = useState(branchFromName(''));
@@ -199,9 +200,10 @@ function StartWorkForm({ repository, unavailableBranches, busy, onConnect, onSub
   const branchAttached = unavailableBranches.includes(selectedBranch);
   const branchAlreadyExists = branchMode === 'new' && repository.branches.includes(selectedBranch);
   const branchUnavailable = branchAttached || branchAlreadyExists;
-  const selectableBranches = repository.branches.filter((branch) => !unavailableBranches.includes(branch));
+  const cannotStart = branchUnavailable || repository.modified;
+  const selectableBranches = repository.branches.filter((branch) => branch !== repository.branch && !unavailableBranches.includes(branch));
 
-  return <form className="grid gap-6" onSubmit={(event) => { event.preventDefault(); if (!branchUnavailable) onSubmit(name, selectedBranch, repository.revision); }}>
+  return <form className="grid gap-6" onSubmit={(event) => { event.preventDefault(); if (!cannotStart) onSubmit(name, selectedBranch, repository.revision, branchMode === 'new'); }}>
     <label className={fieldClass}>What are you working on?<input className={inputClass} name="name" value={name} onChange={(event) => { const next = event.target.value; setName(next); if (!branchEdited) setBranchName(branchFromName(next)); }} placeholder="Stripe checkout" required maxLength={100} /></label>
     <fieldset className="grid gap-3"><legend className="mb-2 text-xs font-semibold text-[#30342f]">Branch</legend>
       <label className={`branch-choice ${branchMode === 'new' ? 'is-selected' : ''}`}><input type="radio" name="branchMode" value="new" checked={branchMode === 'new'} onChange={() => setBranchMode('new')} /><span><strong>Create new branch</strong><small>Start an isolated branch for this work.</small></span></label>
@@ -209,10 +211,11 @@ function StartWorkForm({ repository, unavailableBranches, busy, onConnect, onSub
       <label className={`branch-choice ${branchMode === 'existing' ? 'is-selected' : ''}`}><input type="radio" name="branchMode" value="existing" checked={branchMode === 'existing'} onChange={() => setBranchMode('existing')} /><span><strong>Use existing branch</strong><small>Connect this workstream to a branch you already have.</small></span></label>
       {branchMode === 'existing' && <label className={`${fieldClass} ml-7`}>Existing branch<select className={`${inputClass} font-mono`} name="existingBranch" value={existingBranch} onChange={(event) => setExistingBranch(event.target.value)} required><option value="">Select a local branch</option>{selectableBranches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select>{selectableBranches.length === 0 && <span className="font-normal text-[#a54d45]">Every local branch is already attached to an active workstream.</span>}</label>}
       {branchUnavailable && <p className="mb-0 ml-7 text-xs text-[#a54d45]" role="alert">{branchAttached ? 'This branch already belongs to an active workstream.' : 'This branch already exists. Choose “Use existing branch” instead.'}</p>}
+      {repository.modified && <p className="mb-0 ml-7 text-xs text-[#a54d45]" role="alert">Commit or stash local changes before starting work.</p>}
     </fieldset>
     <section className="starting-point"><span>Starting from</span><strong>{repository.branch}</strong><code>{repository.revision.slice(0, 7)}</code>{repository.modified && <em>Local changes detected</em>}</section>
     <details className="work-details"><summary>Details</summary><dl><div><dt>Repository</dt><dd>{repository.name}</dd></div><div><dt>Location</dt><dd>{repository.path}</dd></div><div><dt>Full revision</dt><dd>{repository.revision}</dd></div></dl></details>
-    <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-t border-[#d8d6ce] pt-5"><p className="m-0 text-xs leading-relaxed text-[#6d716b]">You will become the workstream owner.</p><button className={primaryClass} disabled={busy || branchUnavailable} type="submit">{busy ? 'Please wait…' : 'Start work'}</button></div>
+    <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-t border-[#d8d6ce] pt-5"><p className="m-0 text-xs leading-relaxed text-[#6d716b]">You will become the workstream owner.</p><button className={primaryClass} disabled={busy || cannotStart} type="submit">{busy ? 'Please wait…' : 'Start work'}</button></div>
   </form>;
 }
 
@@ -295,7 +298,7 @@ function Workspace() {
       let saved = await restoreRepository(project.projectId, activeWorkstream?.workstreamId ?? null);
       if (!saved && activeWorkstream) {
         const projectRepository = await restoreRepository(project.projectId, null);
-        if (projectRepository) saved = await connectRepository(project.projectId, activeWorkstream.workstreamId, projectRepository.path);
+        if (projectRepository) saved = await createWorktree(project.projectId, activeWorkstream.workstreamId, activeWorkstream.branchName, activeWorkstream.baseRevision, false);
       }
       if (cancelled || !saved) return;
       setRepository(saved);
@@ -369,6 +372,32 @@ function Workspace() {
     try { await writeRepositoryFile(openFile.path, content); }
     catch (error) { setRequestError({ title: 'Unable to save file', message: messageFor(error, 'The file could not be saved.') }); }
   }, [openFile?.path]);
+  const activateWorkstream = async (stream: Workstream, createBranch: boolean) => {
+    const local = await createWorktree(stream.projectId, stream.workstreamId, stream.branchName, stream.baseRevision, createBranch);
+    await load(stream.projectId, stream.teamId);
+    setActiveWorkstream(stream); setRepository(local); setOpenFile(null); setDialog(null); setPanel('explorer');
+    await saveLastWorkspace(stream.projectId, stream.teamId, stream.workstreamId);
+  };
+  const startWork = async (projectId: string, teamId: string, name: string, branchName: string, baseRevision: string, createBranch: boolean) => {
+    setBusy(true); setNotice(null); setRequestError(null);
+    try {
+      const created = await createWorkstream(projectId, teamId, name, branchName, baseRevision);
+      setDialog(null);
+      try { await activateWorkstream(created, createBranch); }
+      catch (error) {
+        await load(projectId, teamId);
+        setRequestError({
+          title: 'Workstream created; local setup incomplete',
+          message: messageFor(error, 'The local Git worktree could not be created.'),
+          actionLabel: 'Retry local setup',
+          action: () => activateWorkstream(created, createBranch),
+        });
+      }
+    } catch (error) {
+      const invalid = error instanceof ApiError && error.status === 400;
+      setRequestError({ title: invalid ? 'Check the details' : 'Unable to start work', message: invalid ? `${error.message}. Enter the correct details and try again.` : messageFor(error, 'The workstream could not be created.') });
+    } finally { setBusy(false); }
+  };
   const openWorkstream = (stream: Workstream) => { setActiveWorkstream(stream); setOpenFile(null); setPanel('explorer'); if (project && team && isDesktop()) void saveLastWorkspace(project.projectId, team.teamId, stream.workstreamId); };
 
   const projectNavigation = <nav className="team-sidebar bg-[#efede6] p-4" aria-label="Projects">
@@ -397,10 +426,10 @@ function Workspace() {
     {dialog?.kind === 'team' && <Modal title={dialog.team ? 'Edit team' : 'Create team'} onClose={() => setDialog(null)}><EntityForm initial={dialog.team} labels={{ name: 'Team name', submit: dialog.team ? 'Save team' : 'Create team' }} busy={busy} notice={notice} onSubmit={(name, description) => void execute(async () => { if (dialog.team) await updateTeam(dialog.team.teamId, name, description); else { const created = await createTeam(name, description); if (dialog.projectId) await assignProjectTeam(dialog.projectId, created.teamId); } }, dialog.projectId ?? project?.projectId, dialog.team?.teamId ?? null)} /></Modal>}
     {dialog?.kind === 'assign-team' && <Modal title="Assign team" onClose={() => setDialog(null)}><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const teamId = String(new FormData(event.currentTarget).get('teamId')); void execute(() => assignProjectTeam(dialog.project.projectId, teamId), dialog.project.projectId, teamId); }}><select className={inputClass} name="teamId" required>{dialog.teams.map((item) => <option value={item.teamId} key={item.teamId}>{item.name}</option>)}</select><SubmitButton busy={busy}>Assign team</SubmitButton></form></Modal>}
     {dialog?.kind === 'member' && <Modal title="Add member" onClose={() => setDialog(null)}><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const values = formValues(event.currentTarget); void execute(() => addTeamMember(dialog.team.teamId, String(values.email), String(values.role) as UserRole)); }}><label className={fieldClass}>Email<input className={inputClass} name="email" type="email" required /></label><label className={fieldClass}>Role<select className={inputClass} name="role">{roles.map((role) => <option key={role}>{role}</option>)}</select></label><SubmitButton busy={busy}>Add member</SubmitButton></form></Modal>}
-    {dialog?.kind === 'workstream' && <Modal title="Start work" onClose={() => setDialog(null)}><StartWorkForm repository={repository} unavailableBranches={workstreams.filter((stream) => stream.status !== 'MERGED').map((stream) => stream.branchName)} busy={busy} onConnect={() => void chooseRepository()} onSubmit={(name, branchName, baseRevision) => void execute(() => createWorkstream(dialog.project.projectId, dialog.team.teamId, name, branchName, baseRevision))} /></Modal>}
+    {dialog?.kind === 'workstream' && <Modal title="Start work" onClose={() => setDialog(null)}><StartWorkForm repository={repository} unavailableBranches={workstreams.filter((stream) => stream.status !== 'MERGED').map((stream) => stream.branchName)} busy={busy} onConnect={() => void chooseRepository()} onSubmit={(name, branchName, baseRevision, createBranch) => void startWork(dialog.project.projectId, dialog.team.teamId, name, branchName, baseRevision, createBranch)} /></Modal>}
     {dialog?.kind === 'profile' && <Modal title="Edit profile" onClose={() => setDialog(null)}><form className="grid gap-5" onSubmit={async (event) => { event.preventDefault(); setBusy(true); setNotice(null); const values = formValues(event.currentTarget); try { const updated = await authenticatedRequest<UserProfile>('/api/users/me', 'PUT', values); setProfile(updated); setDialog(null); } catch (error) { setNotice({ message: messageFor(error, 'Unable to update your profile.') }); } finally { setBusy(false); } }}><div className="grid grid-cols-2 gap-4"><label className="field-label">First name<input className="field-input" name="firstName" defaultValue={dialog.profile.firstName} required maxLength={50} /></label><label className="field-label">Last name<input className="field-input" name="lastName" defaultValue={dialog.profile.lastName} required maxLength={50} /></label></div><label className="field-label">Middle name <span>(optional)</span><input className="field-input" name="middleName" defaultValue={dialog.profile.middleName ?? ''} maxLength={50} /></label><label className="field-label">Username<input className="field-input" name="username" defaultValue={dialog.profile.username} required minLength={5} maxLength={50} pattern="[a-zA-Z0-9._-]+" /></label><label className="field-label">Email<input className="field-input bg-[#efede6] text-[#777b75]" value={dialog.profile.email} disabled /></label><NoticeView notice={notice} /><div className="grid grid-cols-2 gap-3"><button className="neutral-button" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="neutral-button-filled" disabled={busy} type="submit">{busy ? 'Please wait…' : 'Save changes'}</button></div></form></Modal>}
     {confirmation && <div className="fixed inset-0 z-[60] grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && setConfirmation(null)}><section className="confirmation-dialog w-full max-w-[390px] border border-[#c7c5bd] bg-[#f8f7f2] p-6 shadow-[0_24px_70px_rgba(0,0,0,.28)]" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" aria-describedby="confirmation-message"><h2 className="m-0 text-xl font-bold tracking-[-.03em]" id="confirmation-title">{confirmation.title}</h2><p className="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="confirmation-message">{confirmation.message}</p><div className="grid grid-cols-2 gap-3"><button className="neutral-button" type="button" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</button><button className="danger-button" type="button" disabled={busy} onClick={() => { const action = confirmation.action; setBusy(true); void action().catch((error) => setNotice({ message: messageFor(error, 'The action could not be completed.') })).finally(() => { setBusy(false); setConfirmation(null); }); }}>{busy ? 'Please wait…' : confirmation.label}</button></div></section></div>}
-    {requestError && <div className="fixed inset-0 z-[70] grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && setRequestError(null)}><section className="confirmation-dialog w-full max-w-[420px] border border-[#c9786f] bg-[#f8f7f2] p-6 shadow-[0_24px_70px_rgba(0,0,0,.28)]" role="alertdialog" aria-modal="true" aria-labelledby="request-error-title" aria-describedby="request-error-message"><h2 className="m-0 text-xl font-bold tracking-[-.03em]" id="request-error-title">{requestError.title}</h2><p className="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="request-error-message">{requestError.message}</p><button className="neutral-button-filled w-full" type="button" autoFocus onClick={() => setRequestError(null)}>Correct the details</button></section></div>}
+    {requestError && <div className="fixed inset-0 z-[70] grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && setRequestError(null)}><section className="confirmation-dialog w-full max-w-[420px] border border-[#c9786f] bg-[#f8f7f2] p-6 shadow-[0_24px_70px_rgba(0,0,0,.28)]" role="alertdialog" aria-modal="true" aria-labelledby="request-error-title" aria-describedby="request-error-message"><h2 className="m-0 text-xl font-bold tracking-[-.03em]" id="request-error-title">{requestError.title}</h2><p className="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="request-error-message">{requestError.message}</p><div className={`grid gap-3 ${requestError.action ? 'grid-cols-2' : ''}`}><button className="neutral-button" type="button" onClick={() => setRequestError(null)}>{requestError.action ? 'Close' : 'Correct the details'}</button>{requestError.action && <button className="neutral-button-filled" type="button" disabled={busy} autoFocus onClick={() => { const retry = requestError.action!; setBusy(true); void retry().then(() => setRequestError(null)).catch((error) => setRequestError((current) => current ? { ...current, message: messageFor(error, 'The local Git worktree could not be created.') } : null)).finally(() => setBusy(false)); }}>{busy ? 'Please wait…' : requestError.actionLabel}</button>}</div></section></div>}
   </main>;
 }
 
