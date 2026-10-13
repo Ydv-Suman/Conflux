@@ -1,0 +1,55 @@
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+
+export type RepositoryFile = {
+  path: string;
+  name: string;
+  directory: boolean;
+  children: RepositoryFile[];
+};
+
+export type RepositoryInfo = {
+  path: string;
+  name: string;
+  branch: string;
+  revision: string;
+  modified: boolean;
+  branches: string[];
+  files: RepositoryFile[];
+  lastOpenedFile: string | null;
+};
+
+export type LastWorkspace = { projectId: string; teamId: string; workstreamId: string | null };
+
+export const isDesktop = () => '__TAURI_INTERNALS__' in window;
+
+export const selectRepository = async (projectId: string, workstreamId: string | null) => {
+  const path = await open({ directory: true, multiple: false, title: 'Select a local Git repository' });
+  return typeof path === 'string' ? connectRepository(projectId, workstreamId, path) : null;
+};
+
+export const selectUnlinkedRepository = async () => {
+  const path = await open({ directory: true, multiple: false, title: 'Select a local Git repository' });
+  if (typeof path !== 'string') return null;
+  return { path, repository: await invoke<RepositoryInfo>('inspect_repository', { path }) };
+};
+
+export const connectRepository = (projectId: string, workstreamId: string | null, path: string) =>
+  invoke<RepositoryInfo>('connect_repository', { projectId, workstreamId, path });
+
+export const restoreRepository = (projectId: string, workstreamId: string | null) =>
+  invoke<RepositoryInfo | null>('restore_repository', { projectId, workstreamId });
+
+export const readRepositoryFile = (path: string) =>
+  invoke<string>('read_repository_file', { path });
+
+export const writeRepositoryFile = (path: string, content: string) =>
+  invoke<void>('write_repository_file', { path, content });
+
+export const rememberOpenFile = (projectId: string, workstreamId: string, path: string) =>
+  invoke<void>('remember_open_file', { projectId, workstreamId, path });
+
+export const saveLastWorkspace = (projectId: string, teamId: string, workstreamId: string | null) =>
+  invoke<void>('save_last_workspace', { projectId, teamId, workstreamId });
+
+export const loadLastWorkspace = () => invoke<LastWorkspace | null>('load_last_workspace');

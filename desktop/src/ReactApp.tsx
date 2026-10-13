@@ -41,6 +41,22 @@ import {
   type ProjectTeam,
   type Workstream,
 } from './features/projects/api';
+import { CollaborativeEditor } from './features/editor/CollaborativeEditor';
+import { RepositoryExplorer } from './features/repository/RepositoryExplorer';
+import {
+  connectRepository,
+  isDesktop,
+  loadLastWorkspace,
+  readRepositoryFile,
+  rememberOpenFile,
+  restoreRepository,
+  saveLastWorkspace,
+  selectRepository,
+  selectUnlinkedRepository,
+  writeRepositoryFile,
+  type RepositoryFile,
+  type RepositoryInfo,
+} from './features/repository/api';
 
 type Route = '/' | '/sign-up' | '/check-email' | '/verify-email' | '/app';
 type Notice = { message: string; kind?: 'error' | 'success' } | null;
@@ -53,6 +69,7 @@ type Dialog =
   | { kind: 'profile'; profile: UserProfile }
   | null;
 type Confirmation = { title: string; message: string; label: string; action: () => Promise<void> } | null;
+type RequestError = { title: string; message: string } | null;
 
 const fieldClass = 'grid gap-2 text-xs font-semibold text-[#30342f]';
 const inputClass = 'h-11 w-full rounded-lg border border-[#c9c9c1] bg-[#fffefa] px-3 text-sm font-normal text-[#1d211e] outline-none transition duration-200 placeholder:text-[#969990] hover:border-[#999d96] focus:border-[#66707c] focus:ring-3 focus:ring-[#66707c]/15';
@@ -160,11 +177,60 @@ function EmailStatus({ verify }: { verify: boolean }) {
 }
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] shadow-[0_24px_70px_rgba(39,44,40,.24)]"><header className="flex items-center justify-between border-b border-[#d8d6ce] px-7 py-6"><h2 className="m-0 text-3xl font-bold tracking-[-.04em]">{title}</h2><button className="panel-close" type="button" onClick={onClose}>×</button></header><div className="p-7">{children}</div></section></div>;
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal-surface max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] shadow-[0_24px_70px_rgba(39,44,40,.24)]"><header className="flex items-center justify-between border-b border-[#d8d6ce] px-7 py-6"><h2 className="m-0 text-3xl font-bold tracking-[-.04em]">{title}</h2><button className="panel-close" type="button" onClick={onClose}>×</button></header><div className="p-7">{children}</div></section></div>;
 }
 
 function EntityForm({ initial, labels, busy, notice, onSubmit }: { initial?: { name: string; description: string | null }; labels: { name: string; submit: string }; busy: boolean; notice: Notice; onSubmit: (name: string, description: string) => void }) {
   return <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const values = formValues(event.currentTarget); onSubmit(String(values.name), String(values.description ?? '')); }}><label className={fieldClass}>{labels.name}<input className={inputClass} name="name" defaultValue={initial?.name} required maxLength={100} /></label><label className={fieldClass}>Description<textarea className={`${inputClass} min-h-24 py-3`} name="description" defaultValue={initial?.description ?? ''} maxLength={500} /></label><NoticeView notice={notice} /><SubmitButton busy={busy}>{labels.submit}</SubmitButton></form>;
+}
+
+const branchFromName = (name: string) => `feature/${name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-work'}`;
+
+function StartWorkForm({ repository, unavailableBranches, busy, onConnect, onSubmit }: { repository: RepositoryInfo | null; unavailableBranches: string[]; busy: boolean; onConnect: () => void; onSubmit: (name: string, branchName: string, baseRevision: string) => void }) {
+  const [name, setName] = useState('');
+  const [branchMode, setBranchMode] = useState<'new' | 'existing'>('new');
+  const [branchName, setBranchName] = useState(branchFromName(''));
+  const [branchEdited, setBranchEdited] = useState(false);
+  const [existingBranch, setExistingBranch] = useState('');
+
+  if (!repository) return <div className="grid gap-5"><div className="border-l-2 border-[#c7c5bd] pl-4"><strong className="text-sm">Local repository required</strong><p className="mb-0 mt-1 text-xs leading-relaxed text-[#6d716b]">Connect the repository that will contain this workstream. Conflux will inspect it without changing its branch.</p></div><button className="neutral-button-filled" type="button" onClick={onConnect}>Select local folder</button></div>;
+
+  const selectedBranch = branchMode === 'new' ? branchName : existingBranch;
+  const branchAttached = unavailableBranches.includes(selectedBranch);
+  const branchAlreadyExists = branchMode === 'new' && repository.branches.includes(selectedBranch);
+  const branchUnavailable = branchAttached || branchAlreadyExists;
+  const selectableBranches = repository.branches.filter((branch) => !unavailableBranches.includes(branch));
+
+  return <form className="grid gap-6" onSubmit={(event) => { event.preventDefault(); if (!branchUnavailable) onSubmit(name, selectedBranch, repository.revision); }}>
+    <label className={fieldClass}>What are you working on?<input className={inputClass} name="name" value={name} onChange={(event) => { const next = event.target.value; setName(next); if (!branchEdited) setBranchName(branchFromName(next)); }} placeholder="Stripe checkout" required maxLength={100} /></label>
+    <fieldset className="grid gap-3"><legend className="mb-2 text-xs font-semibold text-[#30342f]">Branch</legend>
+      <label className={`branch-choice ${branchMode === 'new' ? 'is-selected' : ''}`}><input type="radio" name="branchMode" value="new" checked={branchMode === 'new'} onChange={() => setBranchMode('new')} /><span><strong>Create new branch</strong><small>Start an isolated branch for this work.</small></span></label>
+      {branchMode === 'new' && <label className={`${fieldClass} ml-7`}>Branch name<input className={`${inputClass} font-mono`} name="newBranch" value={branchName} onChange={(event) => { setBranchEdited(true); setBranchName(event.target.value); }} pattern="[A-Za-z0-9][A-Za-z0-9._/-]{0,199}" title="Enter a safe Git branch name." required /></label>}
+      <label className={`branch-choice ${branchMode === 'existing' ? 'is-selected' : ''}`}><input type="radio" name="branchMode" value="existing" checked={branchMode === 'existing'} onChange={() => setBranchMode('existing')} /><span><strong>Use existing branch</strong><small>Connect this workstream to a branch you already have.</small></span></label>
+      {branchMode === 'existing' && <label className={`${fieldClass} ml-7`}>Existing branch<select className={`${inputClass} font-mono`} name="existingBranch" value={existingBranch} onChange={(event) => setExistingBranch(event.target.value)} required><option value="">Select a local branch</option>{selectableBranches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select>{selectableBranches.length === 0 && <span className="font-normal text-[#a54d45]">Every local branch is already attached to an active workstream.</span>}</label>}
+      {branchUnavailable && <p className="mb-0 ml-7 text-xs text-[#a54d45]" role="alert">{branchAttached ? 'This branch already belongs to an active workstream.' : 'This branch already exists. Choose “Use existing branch” instead.'}</p>}
+    </fieldset>
+    <section className="starting-point"><span>Starting from</span><strong>{repository.branch}</strong><code>{repository.revision.slice(0, 7)}</code>{repository.modified && <em>Local changes detected</em>}</section>
+    <details className="work-details"><summary>Details</summary><dl><div><dt>Repository</dt><dd>{repository.name}</dd></div><div><dt>Location</dt><dd>{repository.path}</dd></div><div><dt>Full revision</dt><dd>{repository.revision}</dd></div></dl></details>
+    <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-t border-[#d8d6ce] pt-5"><p className="m-0 text-xs leading-relaxed text-[#6d716b]">You will become the workstream owner.</p><button className={primaryClass} disabled={busy || branchUnavailable} type="submit">{busy ? 'Please wait…' : 'Start work'}</button></div>
+  </form>;
+}
+
+const roleRank: Record<UserRole, number> = { ADMIN: 0, TEAM_LEAD: 1, SENIOR_DEVELOPER: 2, DEVELOPER: 3, VIEWER: 4 };
+
+function TeamMemberList({ members, capabilities, busy, onRoleChange, onRemove }: { members: TeamMember[]; capabilities: TeamCapabilities; busy: boolean; onRoleChange: (member: TeamMember, role: UserRole) => Promise<void>; onRemove: (member: TeamMember) => void }) {
+  const [editing, setEditing] = useState<TeamMember | null>(null);
+  const [selectedRole, setSelectedRole] = useState<UserRole>('VIEWER');
+  const actorRole = capabilities.role;
+  const canManage = (member: TeamMember) => capabilities.capabilities.includes('MANAGE_ROLES') && (actorRole === 'ADMIN' || roleRank[actorRole] < roleRank[member.role]);
+  const allowedRoles = roles.filter((role) => actorRole === 'ADMIN' || roleRank[actorRole] < roleRank[role]);
+
+  return <div className="divide-y divide-[#d8d6ce]">{members.map((member) => {
+    const manageable = canManage(member);
+    return <article className="relative py-4" key={member.userId}><div className="flex items-center justify-between gap-4"><div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><strong className="truncate text-sm font-semibold">{member.fullName || member.username}</strong><span className="shrink-0 text-xs text-[#59616c]">{member.role.replaceAll('_', ' ')}</span>{manageable && <button className="member-role-edit" type="button" aria-label={`Edit ${member.username}'s role`} title="Edit role" aria-expanded={editing?.userId === member.userId} onClick={() => { setEditing(editing?.userId === member.userId ? null : member); setSelectedRole(member.role); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg></button>}</div><span className="mt-1 block truncate text-xs text-[#6d716b]">@{member.username} · Joined {new Date(member.joinedAt).toLocaleDateString()}</span></div>{manageable && capabilities.capabilities.includes('MANAGE_MEMBERS') && <button className="danger-button danger-button-compact shrink-0" type="button" onClick={() => onRemove(member)}>Remove</button>}</div>
+      {editing?.userId === member.userId && <><button className="member-role-backdrop" type="button" aria-label="Close role editor" onClick={() => setEditing(null)} /><div className="member-role-popover" role="dialog" aria-modal="true" aria-label={`Change ${member.username}'s role`}><label className="field-label">Role<select className="field-input" value={selectedRole} onChange={(event) => setSelectedRole(event.target.value as UserRole)}>{allowedRoles.map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</select></label><div className="mt-3 grid grid-cols-2 gap-2"><button className="neutral-button min-h-9" type="button" disabled={busy} onClick={() => setEditing(null)}>Cancel</button><button className="neutral-button-filled min-h-9" type="button" disabled={busy || selectedRole === member.role} onClick={() => void onRoleChange(member, selectedRole).then(() => setEditing(null))}>{busy ? 'Saving…' : 'Save'}</button></div></div></>}
+    </article>;
+  })}</div>;
 }
 
 function Workspace() {
@@ -177,8 +243,12 @@ function Workspace() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [capabilities, setCapabilities] = useState<TeamCapabilities | null>(null);
   const [workstreams, setWorkstreams] = useState<Workstream[]>([]);
+  const [activeWorkstream, setActiveWorkstream] = useState<Workstream | null>(null);
+  const [repository, setRepository] = useState<RepositoryInfo | null>(null);
+  const [openFile, setOpenFile] = useState<{ path: string; content: string } | null>(null);
+  const [restoreWorkstreamId, setRestoreWorkstreamId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [panel, setPanel] = useState<'projects' | 'profile' | 'settings' | null>('projects');
+  const [panel, setPanel] = useState<'explorer' | 'projects' | 'profile' | 'settings' | null>('projects');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = Number(localStorage.getItem('activityPanelWidth'));
@@ -186,6 +256,7 @@ function Workspace() {
   });
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
+  const [requestError, setRequestError] = useState<RequestError>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
 
@@ -199,15 +270,53 @@ function Workspace() {
       const owned = nextTeam ? nextTeams.find((item) => item.teamId === nextTeam.teamId) ?? null : null;
       let detail: Team | null = null; let nextMembers: TeamMember[] = []; let caps: TeamCapabilities | null = null; let streams: Workstream[] = [];
       if (nextProject && nextTeam && owned) [detail, nextMembers, caps, streams] = await Promise.all([getTeam(nextTeam.teamId), listTeamMembers(nextTeam.teamId), getMyTeamCapabilities(nextTeam.teamId), listWorkstreams(nextProject.projectId, nextTeam.teamId)]);
-      setProjects(nextProjects); setTeams(nextTeams); setProject(nextProject); setProjectTeams(nextProjectTeams); setTeam(nextTeam); setIdentityTeam(detail); setMembers(nextMembers); setCapabilities(caps); setWorkstreams(streams);
+      setProjects(nextProjects); setTeams(nextTeams); setProject(nextProject); setProjectTeams(nextProjectTeams); setTeam(nextTeam); setIdentityTeam(detail); setMembers(nextMembers); setCapabilities(caps); setWorkstreams(streams); setActiveWorkstream(null);
     } catch (error) { setNotice({ message: messageFor(error, 'Unable to load projects.') }); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!isDesktop()) { void load(); return; }
+    void loadLastWorkspace().then((saved) => {
+      if (!saved) return load();
+      setRestoreWorkstreamId(saved.workstreamId);
+      return load(saved.projectId, saved.teamId);
+    }).catch(() => load());
+  }, [load]);
+  useEffect(() => {
+    if (!restoreWorkstreamId || !workstreams.length) return;
+    const saved = workstreams.find((stream) => stream.workstreamId === restoreWorkstreamId);
+    if (saved) { setActiveWorkstream(saved); setPanel('explorer'); }
+    setRestoreWorkstreamId(null);
+  }, [restoreWorkstreamId, workstreams]);
+  useEffect(() => {
+    setRepository(null); setOpenFile(null);
+    if (!project || !isDesktop()) return;
+    let cancelled = false;
+    const restore = async (): Promise<void> => {
+      let saved = await restoreRepository(project.projectId, activeWorkstream?.workstreamId ?? null);
+      if (!saved && activeWorkstream) {
+        const projectRepository = await restoreRepository(project.projectId, null);
+        if (projectRepository) saved = await connectRepository(project.projectId, activeWorkstream.workstreamId, projectRepository.path);
+      }
+      if (cancelled || !saved) return;
+      setRepository(saved);
+      if (activeWorkstream && saved.lastOpenedFile) {
+        try { setOpenFile({ path: saved.lastOpenedFile, content: await readRepositoryFile(saved.lastOpenedFile) }); } catch { /* The file may have moved. */ }
+      }
+    };
+    void restore().catch((): void => {});
+    return () => { cancelled = true; };
+  }, [project?.projectId, activeWorkstream?.workstreamId]);
 
   const execute = async (action: () => Promise<unknown>, reloadProject = project?.projectId ?? null, reloadTeam = team?.teamId ?? null) => {
-    setBusy(true); setNotice(null);
+    setBusy(true); setNotice(null); setRequestError(null);
     try { await action(); setDialog(null); await load(reloadProject, reloadTeam); }
-    catch (error) { setNotice({ message: messageFor(error, 'The request could not be completed.') }); }
+    catch (error) {
+      const invalid = error instanceof ApiError && error.status === 400;
+      setRequestError({
+        title: invalid ? 'Check the details' : 'Unable to complete request',
+        message: invalid ? `${error.message}. Enter the correct details and try again.` : messageFor(error, 'The request could not be completed.'),
+      });
+    }
     finally { setBusy(false); }
   };
   const can = (capability: string) => capabilities?.capabilities.includes(capability as never) ?? false;
@@ -233,35 +342,65 @@ function Workspace() {
     const stop = () => { document.removeEventListener('pointermove', resize); document.removeEventListener('pointerup', stop); };
     document.addEventListener('pointermove', resize); document.addEventListener('pointerup', stop);
   };
+  const chooseRepository = async () => {
+    if (!isDesktop()) { setRequestError({ title: 'Desktop app required', message: 'Local folder access is available in the Conflux desktop app. Run npm start to test it.' }); return; }
+    try {
+      if (!project) {
+        const selected = await selectUnlinkedRepository();
+        if (!selected) return;
+        const created = await createProject(selected.repository.name, 'Created from a local repository.');
+        await connectRepository(created.projectId, null, selected.path);
+        await load(created.projectId, null);
+        setPanel('projects');
+        return;
+      }
+      const selected = await selectRepository(project.projectId, activeWorkstream?.workstreamId ?? null);
+      if (!selected) return;
+      setRepository(selected);
+    } catch (error) { setRequestError({ title: 'Unable to connect repository', message: messageFor(error, 'Select a valid local Git repository.') }); }
+  };
+  const openRepositoryFile = async (file: RepositoryFile) => {
+    if (!activeWorkstream) { setRequestError({ title: 'Open a workstream', message: 'Choose a workstream before opening a collaborative file.' }); return; }
+    try { setOpenFile({ path: file.path, content: await readRepositoryFile(file.path) }); await rememberOpenFile(project!.projectId, activeWorkstream.workstreamId, file.path); setPanel(null); }
+    catch (error) { setRequestError({ title: 'Unable to open file', message: messageFor(error, 'The file could not be opened.') }); }
+  };
+  const saveRepositoryFile = useCallback(async (content: string) => {
+    if (!openFile) return;
+    try { await writeRepositoryFile(openFile.path, content); }
+    catch (error) { setRequestError({ title: 'Unable to save file', message: messageFor(error, 'The file could not be saved.') }); }
+  }, [openFile?.path]);
+  const openWorkstream = (stream: Workstream) => { setActiveWorkstream(stream); setOpenFile(null); setPanel('explorer'); if (project && team && isDesktop()) void saveLastWorkspace(project.projectId, team.teamId, stream.workstreamId); };
 
   const projectNavigation = <nav className="team-sidebar bg-[#efede6] p-4" aria-label="Projects">
     <div className="mb-4 flex items-center justify-between gap-3 px-1"><h2 className="m-0 text-base font-semibold tracking-[-.02em]">PROJECTS</h2><button className="neutral-button project-create-compact" type="button" onClick={() => setDialog({ kind: 'project' })}>Create</button></div>
     <div className="grid gap-1">{projects.map((item) => <div key={item.projectId}><button className={`team-section-link project-switch ${item.projectId === project?.projectId ? 'is-active' : ''}`} type="button" aria-expanded={item.projectId === project?.projectId} onClick={() => void load(item.projectId === project?.projectId ? null : item.projectId, null)}><span className="truncate">{item.name}</span><svg className="size-3 shrink-0 fill-none stroke-current stroke-2" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg></button>{item.projectId === project?.projectId && <div className="ml-4 grid gap-1 border-l border-[#c7c5bd] pl-2"><p className="project-nav-heading">TEAMS</p>{projectTeams.map((itemTeam) => <button className={`team-section-link project-team-switch ${itemTeam.teamId === team?.teamId ? 'is-active' : ''}`} type="button" key={itemTeam.teamId} onClick={() => void load(item.projectId, itemTeam.teamId)}><span className="truncate">{itemTeam.name || 'Unnamed team'}</span></button>)}<p className="project-nav-heading mt-2">PROJECT TOOLS</p><button className="team-section-link" type="button" disabled title="Project-wide chat will be connected through Collaboration Service">Project chat<span className="team-section-status">Later</span></button></div>}</div>)}</div>
   </nav>;
 
-  const workspaceContent = !project ? <section className="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center"><div><h1 className="m-0 text-3xl font-bold tracking-[-.04em]">Welcome to Conflux</h1><p className="mb-0 mt-2 text-sm text-[#6d716b]">Choose a project to view its teams.</p></div></section> : <section className="team-content min-h-[420px] min-w-0 overflow-hidden bg-[#f8f7f2]">
+  const workspaceContent = activeWorkstream && project && openFile ? <CollaborativeEditor projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} filePath={openFile.path} initialContent={openFile.content} theme={theme} onClose={() => setOpenFile(null)} onSave={saveRepositoryFile} /> : activeWorkstream && project ? <section className="grid h-full min-h-[420px] place-items-center px-7 text-center"><div><h2 className="m-0 text-xl font-semibold">Open a file from Explorer</h2><p className="mb-5 mt-2 text-sm text-[#6d716b]">Files remain in your local repository and are shared only while you collaborate.</p><button className="neutral-button-filled" type="button" onClick={() => setPanel('explorer')}>Open Explorer</button></div></section> : !project ? <section className="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center"><div><h1 className="m-0 text-3xl font-bold tracking-[-.04em]">Welcome to Conflux</h1><p className="mb-0 mt-2 text-sm text-[#6d716b]">Choose a project to view its teams.</p></div></section> : <section className="team-content min-h-[420px] min-w-0 overflow-hidden bg-[#f8f7f2]">
     <header className="border-b border-[#d8d6ce] px-6 py-6"><div className="flex items-start justify-between gap-5"><div className="flex min-w-0 items-start gap-3">{team && <button className="panel-action team-back-button mt-0.5 shrink-0 rounded-xl" type="button" aria-label="Back to project" title="Back to project" onClick={() => void load(project.projectId, null)}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg></button>}<div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><h1 className="m-0 truncate text-3xl font-bold tracking-[-.04em]">{team?.name || project.name}</h1>{team && identityTeam && can('MANAGE_TEAM') && <button className="inline-edit shrink-0 rounded-lg" type="button" aria-label="Edit team" title="Edit team" onClick={() => setDialog({ kind: 'team', team: identityTeam })}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg></button>}</div><p className="mb-0 mt-2 max-w-[70ch] text-sm leading-relaxed text-[#6d716b]">{team?.description || project.description || 'No description added.'}</p></div></div>{!team && canManageProject ? <button className="neutral-button shrink-0" type="button" onClick={() => setDialog({ kind: 'project', project })}>Edit project</button> : team && canManageProject ? <button className="danger-button danger-button-compact shrink-0" type="button" onClick={() => confirm(`Remove ${team.name} from ${project.name}?`) && void execute(() => removeProjectTeam(project.projectId, team.teamId), project.projectId, null)}>Remove team</button> : null}</div></header>
-    {!team ? <section className="px-6 py-6"><div className="flex items-center justify-between gap-4"><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Teams <span className="text-sm font-medium text-[#6d716b]">({projectTeams.length})</span></h3>{canManageProject && <div className="flex gap-2">{assignableTeams.length > 0 && <button className="neutral-button" type="button" onClick={() => setDialog({ kind: 'assign-team', project, teams: assignableTeams })}>Add team</button>}<button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'team', projectId: project.projectId })}>Create team</button></div>}</div><div className="mt-4 divide-y divide-[#d8d6ce]">{projectTeams.map((item) => <button className="project-team-row block w-full py-4 text-left" key={item.teamId} type="button" onClick={() => void load(project.projectId, item.teamId)}><strong className="block truncate text-sm">{item.name || 'Unnamed team'}</strong><span className="mt-1 block truncate text-xs text-[#6d716b]">{item.description || 'No description added.'}</span></button>)}</div></section> : identityTeam && capabilities ? <><section className="px-6 py-6"><div className="flex items-center justify-between gap-4"><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Members</h3>{can('MANAGE_MEMBERS') && <button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'member', team: identityTeam, capabilities })}>Add member</button>}</div><div className="mt-3"><NoticeView notice={notice} /><div className="divide-y divide-[#d8d6ce]">{members.map((member) => <article className="py-4" key={member.userId}><div className="flex items-center justify-between gap-4"><div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><strong className="truncate text-sm font-semibold">{member.fullName || member.username}</strong><span className="shrink-0 text-xs text-[#59616c]">{member.role.replaceAll('_', ' ')}</span></div><span className="mt-1 block truncate text-xs text-[#6d716b]">@{member.username} · Joined {new Date(member.joinedAt).toLocaleDateString()}</span></div>{can('MANAGE_MEMBERS') && <button className="danger-button danger-button-compact shrink-0" type="button" onClick={() => confirm(`Remove @${member.username}?`) && void execute(() => removeTeamMember(identityTeam.teamId, member.userId))}>Remove</button>}</div>{can('MANAGE_ROLES') && <select className="field-input member-role mt-3 h-12 w-full text-sm" value={member.role} disabled={busy} onChange={(event) => void execute(() => updateTeamMemberRole(identityTeam.teamId, member.userId, event.target.value as UserRole))}>{roles.map((role) => <option key={role}>{role}</option>)}</select>}</article>)}</div></div></section><section className="border-t border-[#d8d6ce] px-6 py-6"><div className="flex items-center justify-between gap-4"><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Workstreams</h3>{can('CREATE_WORKSTREAM') && <button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'workstream', project, team })}>Create workstream</button>}</div>{workstreams.length ? <div className="mt-4 divide-y divide-[#d8d6ce]">{workstreams.map((stream) => <article className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" key={stream.workstreamId}><div className="min-w-0"><strong className="block truncate text-sm">{stream.name}</strong><span className="mt-1 block truncate font-mono text-[11px] text-[#6d716b]">{stream.branchName}</span></div><span className="rounded-full bg-[#e3e1da] px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[.04em]">{stream.status.replaceAll('_', ' ')}</span></article>)}</div> : <p className="mb-0 mt-4 text-sm text-[#6d716b]">No workstreams for this team yet.</p>}</section></> : <section className="grid min-h-64 place-items-center px-7 py-12 text-center"><div><h3 className="m-0 text-lg font-semibold">Team access is limited</h3><p className="mb-0 mt-2 max-w-[42ch] text-sm leading-relaxed text-[#6d716b]">You can see this team belongs to the project, but its members and workstreams are available only to team members.</p></div></section>}
+    {!team ? <section className="px-6 py-6"><div className="flex items-center justify-between gap-4"><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Teams <span className="text-sm font-medium text-[#6d716b]">({projectTeams.length})</span></h3>{canManageProject && <div className="flex gap-2">{assignableTeams.length > 0 && <button className="neutral-button" type="button" onClick={() => setDialog({ kind: 'assign-team', project, teams: assignableTeams })}>Add team</button>}<button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'team', projectId: project.projectId })}>Create team</button></div>}</div><div className="mt-4 divide-y divide-[#d8d6ce]">{projectTeams.map((item) => <button className="project-team-row block w-full py-4 text-left" key={item.teamId} type="button" onClick={() => void load(project.projectId, item.teamId)}><strong className="block truncate text-sm">{item.name || 'Unnamed team'}</strong><span className="mt-1 block truncate text-xs text-[#6d716b]">{item.description || 'No description added.'}</span></button>)}</div></section> : identityTeam && capabilities ? <><section className="px-6 py-6"><div className="flex items-center justify-between gap-4"><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Members</h3>{can('MANAGE_MEMBERS') && <button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'member', team: identityTeam, capabilities })}>Add member</button>}</div><div className="mt-3"><NoticeView notice={notice} /><TeamMemberList members={members} capabilities={capabilities} busy={busy} onRoleChange={(member, role) => execute(() => updateTeamMemberRole(identityTeam.teamId, member.userId, role))} onRemove={(member) => confirm(`Remove @${member.username}?`) && void execute(() => removeTeamMember(identityTeam.teamId, member.userId))} /></div></section><section className="border-t border-[#d8d6ce] px-6 py-6"><div className="flex items-center justify-between gap-4"><div><h3 className="m-0 text-lg font-semibold tracking-[-.02em]">Workstreams</h3><p className="mb-0 mt-1 text-xs text-[#6d716b]">Feature work and its Git branch.</p></div>{can('CREATE_WORKSTREAM') && <button className="neutral-button-filled" type="button" onClick={() => setDialog({ kind: 'workstream', project, team })}>Start work</button>}</div>{workstreams.length ? <div className="mt-4 divide-y divide-[#d8d6ce]">{workstreams.map((stream) => <button className="workstream-row grid w-full gap-3 py-4 text-left sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" type="button" key={stream.workstreamId} onClick={() => openWorkstream(stream)}><div className="min-w-0"><div className="flex items-center gap-2"><span className={`workstream-status-dot ${stream.status === 'ACTIVE' ? 'is-active' : ''}`} aria-hidden="true" /><strong className="truncate text-sm">{stream.name}</strong></div><span className="ml-4 mt-1 block truncate font-mono text-[11px] text-[#6d716b]">{stream.branchName}</span></div><span className="workstream-open">Open <span aria-hidden="true">→</span></span></button>)}</div> : <div className="mt-5 border-l-2 border-[#c7c5bd] py-2 pl-4"><strong className="text-sm">No work has started yet</strong><p className="mb-0 mt-1 text-xs leading-relaxed text-[#6d716b]">Start the first feature to create its workstream and branch.</p></div>}</section></> : <section className="grid min-h-64 place-items-center px-7 py-12 text-center"><div><h3 className="m-0 text-lg font-semibold">Team access is limited</h3><p className="mb-0 mt-2 max-w-[42ch] text-sm leading-relaxed text-[#6d716b]">You can see this team belongs to the project, but its members and workstreams are available only to team members.</p></div></section>}
   </section>;
 
   return <main className={`app-workspace min-h-dvh bg-[#f8f7f2] ${panel ? 'activity-panel-open' : ''}`} style={{ '--activity-panel-width': `${panelWidth}px` } as React.CSSProperties}>
-    <nav className="activity-rail fixed inset-y-0 left-0 z-20 flex w-12 flex-col items-center border-r border-[#d8d6ce] bg-[#efede6] py-1" aria-label="Primary navigation"><img className="mt-1 size-8 rounded-[9px] object-cover" src={logoUrl} alt="Conflux" /><div className="mt-auto grid gap-1"><button className="rail-button" aria-label="Projects" aria-pressed={panel === 'projects'} title="Projects" onClick={() => setPanel(panel === 'projects' ? null : 'projects')}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3.5 19c.5-3.7 2.3-5.5 5.5-5.5s5 1.8 5.5 5.5M14 15c3.8-.5 5.9.8 6.5 4"/></svg></button><button className="rail-button" aria-label="Profile" aria-pressed={panel === 'profile'} title="Profile" onClick={() => void openProfile()}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/><circle cx="12" cy="12" r="10"/></svg></button><button className="rail-button" aria-label="Settings" aria-pressed={panel === 'settings'} title="Settings" onClick={() => setPanel(panel === 'settings' ? null : 'settings')}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9.4 4.6 10 2h4l.6 2.6 2.1 1.2 2.5-.8 2 3.5-1.9 1.8v2.4l1.9 1.8-2 3.5-2.5-.8-2.1 1.2L14 21h-4l-.6-2.6-2.1-1.2-2.5.8-2-3.5 1.9-1.8v-2.4L2.8 8.5l2-3.5 2.5.8 2.1-1.2Z"/><circle cx="12" cy="11.5" r="3.25"/></svg></button></div></nav>
+    <nav className="activity-rail fixed inset-y-0 left-0 z-20 flex w-12 flex-col items-center border-r border-[#d8d6ce] bg-[#efede6] py-1" aria-label="Primary navigation"><img className="mt-1 size-8 rounded-[9px] object-cover" src={logoUrl} alt="Conflux" /><div className="mt-2"><button className="rail-button" aria-label="Explorer" aria-pressed={panel === 'explorer'} title="Explorer" onClick={() => setPanel(panel === 'explorer' ? null : 'explorer')}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 5.5h6l2 2h9v11h-17z"/><path d="M3.5 9.5h17"/></svg></button></div><div className="mt-auto grid gap-1"><button className="rail-button" aria-label="Projects" aria-pressed={panel === 'projects'} title="Projects" onClick={() => setPanel(panel === 'projects' ? null : 'projects')}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3.5 19c.5-3.7 2.3-5.5 5.5-5.5s5 1.8 5.5 5.5M14 15c3.8-.5 5.9.8 6.5 4"/></svg></button><button className="rail-button" aria-label="Profile" aria-pressed={panel === 'profile'} title="Profile" onClick={() => void openProfile()}><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/><circle cx="12" cy="12" r="10"/></svg></button><button className="rail-button" aria-label="Settings" aria-pressed={panel === 'settings'} title="Settings" onClick={() => setPanel(panel === 'settings' ? null : 'settings')}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9.4 4.6 10 2h4l.6 2.6 2.1 1.2 2.5-.8 2 3.5-1.9 1.8v2.4l1.9 1.8-2 3.5-2.5-.8-2.1 1.2L14 21h-4l-.6-2.6-2.1-1.2-2.5.8-2-3.5 1.9-1.8v-2.4L2.8 8.5l2-3.5 2.5.8 2.1-1.2Z"/><circle cx="12" cy="11.5" r="3.25"/></svg></button></div></nav>
     {panel && <aside className="activity-panel fixed bottom-1 left-13 top-1 z-10 overflow-y-auto rounded-2xl border border-[#d8d6ce] bg-[#efede6]" aria-label="Activity panel"><div className="activity-panel-surface">
+      {panel === 'explorer' && <div className="p-4"><div className="mb-4 flex items-center justify-between"><h2 className="m-0 text-base font-semibold tracking-[-.02em]">EXPLORER</h2><button className="panel-close" type="button" aria-label="Close Explorer" onClick={() => setPanel(null)}>×</button></div><RepositoryExplorer repository={repository} onConnect={() => void chooseRepository()} onChooseWorkstream={() => setPanel('projects')} onOpen={(file) => void openRepositoryFile(file)} /></div>}
       {panel === 'projects' && projectNavigation}
       {panel === 'profile' && <div className="grid gap-5 px-5 pb-5 pt-5">{profile ? <><header className="flex items-center justify-between"><h2 className="m-0 text-lg font-semibold tracking-[-.02em]">Profile</h2><button className="panel-close" type="button" onClick={() => setPanel(null)}>×</button></header><section className="rounded-xl bg-[#e8e6df] p-4"><div className="flex items-center gap-3.5"><div className="grid size-14 shrink-0 place-items-center rounded-full bg-[#4b535d] text-xl font-bold text-white">{profile.username.charAt(0).toUpperCase()}</div><div className="min-w-0"><strong className="block truncate text-base font-semibold">{profile.firstName} {profile.middleName} {profile.lastName}</strong><span className="mt-0.5 block truncate text-sm text-[#6d716b]">@{profile.username}</span></div></div><p className="mb-0 mt-4 break-all text-sm text-[#59616c]">{profile.email}</p></section><button className="neutral-button w-full" type="button" onClick={() => setDialog({ kind: 'profile', profile })}>Edit profile</button><button className="danger-button w-full" type="button" onClick={askToLogOut}>Log out</button><section className="rounded-xl bg-[#f8eae7] p-4"><h3 className="m-0 text-sm font-semibold text-[#7f342e]">Delete account</h3><p className="mb-4 mt-1.5 text-xs leading-relaxed text-[#694944]">Permanently remove your account and profile data.</p><button className="danger-button w-full" type="button" onClick={askToDeleteAccount}>Delete account</button></section></> : <p className="p-4">Loading profile…</p>}</div>}
       {panel === 'settings' && <div className="grid gap-7 px-7 pb-7 pt-4"><div className="flex justify-end"><button className="panel-close" type="button" onClick={() => setPanel(null)}>×</button></div><div className="grid justify-items-center text-center"><div className="grid size-20 place-items-center rounded-full bg-[#4b535d] text-white"><svg className="size-9 fill-none stroke-current stroke-[1.6]" viewBox="0 0 24 24"><path d="M9.4 4.6 10 2h4l.6 2.6 2.1 1.2 2.5-.8 2 3.5-1.9 1.8v2.4l1.9 1.8-2 3.5-2.5-.8-2.1 1.2L14 21h-4l-.6-2.6-2.1-1.2-2.5.8-2-3.5 1.9-1.8v-2.4L2.8 8.5l2-3.5 2.5.8 2.1-1.2Z"/><circle cx="12" cy="11.5" r="3.25"/></svg></div><strong className="mt-4 text-lg font-semibold">Settings</strong><span className="mt-1 text-sm text-[#6d716b]">Customize your Conflux experience</span></div><button className="neutral-button flex w-full items-center justify-center gap-2.5" id="theme-toggle" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{theme === 'dark' ? 'Light theme' : 'Dark theme'}</button></div>}
     </div><button className="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" type="button" aria-label="Resize activity panel" title="Drag to resize" onPointerDown={resizePanel} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setPanelWidth(Math.max(240, panelWidth - 20)); if (event.key === 'ArrowRight') setPanelWidth(Math.min(520, panelWidth + 20)); }}></button>
     </aside>}
-    <section className="editor-stage m-1 min-h-[calc(100dvh-.5rem)] rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
-      <div className="mx-auto w-full max-w-[1400px]"><div id="team-workspace">{workspaceContent}</div><div className="mt-4"><NoticeView notice={notice} /></div></div>
+    <section className={`editor-stage m-1 min-h-[calc(100dvh-.5rem)] rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] ${activeWorkstream ? 'overflow-hidden' : 'px-4 py-8 sm:px-8 lg:px-12 lg:py-10'}`}>
+      <div className={activeWorkstream ? 'h-[calc(100dvh-.5rem)] w-full' : 'mx-auto w-full max-w-[1400px]'}><div className={activeWorkstream ? 'h-full' : ''} id="team-workspace">{workspaceContent}</div>{!activeWorkstream && <div className="mt-4"><NoticeView notice={notice} /></div>}</div>
     </section>
     {dialog?.kind === 'project' && <Modal title={dialog.project ? 'Edit project' : 'Create project'} onClose={() => setDialog(null)}><EntityForm initial={dialog.project} labels={{ name: 'Project name', submit: dialog.project ? 'Save project' : 'Create project' }} busy={busy} notice={notice} onSubmit={(name, description) => void execute(async () => { if (dialog.project) await updateProject(dialog.project.projectId, name, description); else { const created = await createProject(name, description); await load(created.projectId, null); } })} /></Modal>}
     {dialog?.kind === 'team' && <Modal title={dialog.team ? 'Edit team' : 'Create team'} onClose={() => setDialog(null)}><EntityForm initial={dialog.team} labels={{ name: 'Team name', submit: dialog.team ? 'Save team' : 'Create team' }} busy={busy} notice={notice} onSubmit={(name, description) => void execute(async () => { if (dialog.team) await updateTeam(dialog.team.teamId, name, description); else { const created = await createTeam(name, description); if (dialog.projectId) await assignProjectTeam(dialog.projectId, created.teamId); } }, dialog.projectId ?? project?.projectId, dialog.team?.teamId ?? null)} /></Modal>}
     {dialog?.kind === 'assign-team' && <Modal title="Assign team" onClose={() => setDialog(null)}><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const teamId = String(new FormData(event.currentTarget).get('teamId')); void execute(() => assignProjectTeam(dialog.project.projectId, teamId), dialog.project.projectId, teamId); }}><select className={inputClass} name="teamId" required>{dialog.teams.map((item) => <option value={item.teamId} key={item.teamId}>{item.name}</option>)}</select><SubmitButton busy={busy}>Assign team</SubmitButton></form></Modal>}
     {dialog?.kind === 'member' && <Modal title="Add member" onClose={() => setDialog(null)}><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const values = formValues(event.currentTarget); void execute(() => addTeamMember(dialog.team.teamId, String(values.email), String(values.role) as UserRole)); }}><label className={fieldClass}>Email<input className={inputClass} name="email" type="email" required /></label><label className={fieldClass}>Role<select className={inputClass} name="role">{roles.map((role) => <option key={role}>{role}</option>)}</select></label><SubmitButton busy={busy}>Add member</SubmitButton></form></Modal>}
-    {dialog?.kind === 'workstream' && <Modal title="Create workstream" onClose={() => setDialog(null)}><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const values = formValues(event.currentTarget); void execute(() => createWorkstream(dialog.project.projectId, dialog.team.teamId, String(values.name), String(values.branchName), String(values.baseRevision))); }}><label className={fieldClass}>Name<input className={inputClass} name="name" required /></label><label className={fieldClass}>Branch name<input className={inputClass} name="branchName" required /></label><label className={fieldClass}>Base revision<input className={inputClass} name="baseRevision" required /></label><SubmitButton busy={busy}>Create workstream</SubmitButton></form></Modal>}
+    {dialog?.kind === 'workstream' && <Modal title="Start work" onClose={() => setDialog(null)}><StartWorkForm repository={repository} unavailableBranches={workstreams.filter((stream) => stream.status !== 'MERGED').map((stream) => stream.branchName)} busy={busy} onConnect={() => void chooseRepository()} onSubmit={(name, branchName, baseRevision) => void execute(() => createWorkstream(dialog.project.projectId, dialog.team.teamId, name, branchName, baseRevision))} /></Modal>}
     {dialog?.kind === 'profile' && <Modal title="Edit profile" onClose={() => setDialog(null)}><form className="grid gap-5" onSubmit={async (event) => { event.preventDefault(); setBusy(true); setNotice(null); const values = formValues(event.currentTarget); try { const updated = await authenticatedRequest<UserProfile>('/api/users/me', 'PUT', values); setProfile(updated); setDialog(null); } catch (error) { setNotice({ message: messageFor(error, 'Unable to update your profile.') }); } finally { setBusy(false); } }}><div className="grid grid-cols-2 gap-4"><label className="field-label">First name<input className="field-input" name="firstName" defaultValue={dialog.profile.firstName} required maxLength={50} /></label><label className="field-label">Last name<input className="field-input" name="lastName" defaultValue={dialog.profile.lastName} required maxLength={50} /></label></div><label className="field-label">Middle name <span>(optional)</span><input className="field-input" name="middleName" defaultValue={dialog.profile.middleName ?? ''} maxLength={50} /></label><label className="field-label">Username<input className="field-input" name="username" defaultValue={dialog.profile.username} required minLength={5} maxLength={50} pattern="[a-zA-Z0-9._-]+" /></label><label className="field-label">Email<input className="field-input bg-[#efede6] text-[#777b75]" value={dialog.profile.email} disabled /></label><NoticeView notice={notice} /><div className="grid grid-cols-2 gap-3"><button className="neutral-button" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="neutral-button-filled" disabled={busy} type="submit">{busy ? 'Please wait…' : 'Save changes'}</button></div></form></Modal>}
     {confirmation && <div className="fixed inset-0 z-[60] grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && setConfirmation(null)}><section className="confirmation-dialog w-full max-w-[390px] border border-[#c7c5bd] bg-[#f8f7f2] p-6 shadow-[0_24px_70px_rgba(0,0,0,.28)]" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" aria-describedby="confirmation-message"><h2 className="m-0 text-xl font-bold tracking-[-.03em]" id="confirmation-title">{confirmation.title}</h2><p className="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="confirmation-message">{confirmation.message}</p><div className="grid grid-cols-2 gap-3"><button className="neutral-button" type="button" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</button><button className="danger-button" type="button" disabled={busy} onClick={() => { const action = confirmation.action; setBusy(true); void action().catch((error) => setNotice({ message: messageFor(error, 'The action could not be completed.') })).finally(() => { setBusy(false); setConfirmation(null); }); }}>{busy ? 'Please wait…' : confirmation.label}</button></div></section></div>}
+    {requestError && <div className="fixed inset-0 z-[70] grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && setRequestError(null)}><section className="confirmation-dialog w-full max-w-[420px] border border-[#c9786f] bg-[#f8f7f2] p-6 shadow-[0_24px_70px_rgba(0,0,0,.28)]" role="alertdialog" aria-modal="true" aria-labelledby="request-error-title" aria-describedby="request-error-message"><h2 className="m-0 text-xl font-bold tracking-[-.03em]" id="request-error-title">{requestError.title}</h2><p className="mb-6 mt-3 text-sm leading-relaxed text-[#6d716b]" id="request-error-message">{requestError.message}</p><button className="neutral-button-filled w-full" type="button" autoFocus onClick={() => setRequestError(null)}>Correct the details</button></section></div>}
   </main>;
 }
 
