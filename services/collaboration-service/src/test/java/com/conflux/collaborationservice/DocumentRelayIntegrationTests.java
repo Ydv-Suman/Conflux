@@ -1,4 +1,4 @@
-package com.conflux.collaboration_service;
+package com.conflux.collaborationservice;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -90,19 +90,35 @@ class DocumentRelayIntegrationTests {
 		}
 	}
 
+	@Test
+	void signalsWhenHistoryReplayIsComplete() throws Exception {
+		Receiver receiver = connectReceiver(endpoint("project-one", "auth", "new-document"), 1, true);
+
+		try {
+			assertArrayEquals(new byte[0], receiver.messages().get(5, TimeUnit.SECONDS).getFirst());
+		} finally {
+			receiver.connection().dispose();
+		}
+	}
+
 	private Receiver connectReceiver(URI endpoint, int expectedMessages) throws InterruptedException {
+		return connectReceiver(endpoint, expectedMessages, false);
+	}
+
+	private Receiver connectReceiver(URI endpoint, int expectedMessages, boolean includeReplayMarker) throws InterruptedException {
 		var connected = new CountDownLatch(1);
 		var messages = new CompletableFuture<List<byte[]>>();
 
 		Disposable connection = client.execute(endpoint, session -> {
 			connected.countDown();
 			return session.receive()
-					.take(expectedMessages)
 					.map(incoming -> {
 						byte[] bytes = new byte[incoming.getPayload().readableByteCount()];
 						incoming.getPayload().read(bytes);
 						return bytes;
 					})
+					.filter(bytes -> includeReplayMarker || bytes.length > 0)
+					.take(expectedMessages)
 					.collectList()
 					.doOnNext(messages::complete)
 					.then();

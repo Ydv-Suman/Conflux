@@ -1,4 +1,4 @@
-package com.conflux.collaboration_service;
+package com.conflux.collaborationservice;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -84,7 +84,7 @@ final class DocumentRelayHandler implements WebSocketHandler {
 	private record ClientConnection(List<byte[]> history, Sinks.Many<byte[]> outbound) {
 
 		private Flux<byte[]> updates() {
-			return Flux.concat(Flux.fromIterable(history), outbound.asFlux());
+			return Flux.concat(Flux.fromIterable(history), Mono.just(new byte[0]), outbound.asFlux());
 		}
 	}
 
