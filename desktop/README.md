@@ -19,6 +19,12 @@ npm start
 
 Identity Service must be available at `VITE_IDENTITY_API_URL`, and Workspace Service must be available at `VITE_WORKSPACE_API_URL`. The desktop client sends the in-memory bearer token to Workspace Service but deliberately omits Identity refresh cookies from cross-service requests.
 
+The collaborative editor connects to `VITE_COLLABORATION_WS_URL` (default `ws://localhost:8090`). Select a project, team, and workstream, then open a file from the connected local repository.
+
+Run `npm start` to use local repository features. Open a project and workstream, select Explorer below the Conflux logo, and choose **Select local folder**. Conflux validates the Git repository, shows its local files, and saves the active file with `Cmd+S` or `Ctrl+S`. Browser-only development at `http://localhost:5173` cannot access local folders.
+
+Device-only repository mappings, the last selected project/workstream, and the last opened file are stored in `conflux.sqlite3` under the operating system's application-data directory. Repository contents are not copied into SQLite or uploaded to Conflux.
+
 The Projects area lists every project connected to the signed-in user. Opening a project reveals all assigned teams; member details and workstreams load only for teams the user belongs to. Project and team controls are capability-aware for usability, while Identity and Workspace Services remain responsible for every authorization decision.
 
 ## Commands
