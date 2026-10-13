@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+// Vite resolves the worker query suffix; eslint-plugin-import does not.
+// eslint-disable-next-line import/no-unresolved
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
