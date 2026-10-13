@@ -1,4 +1,4 @@
-package com.conflux.collaboration_service;
+package com.conflux.collaborationservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -1,4 +1,4 @@
-package com.conflux.collaboration_service;
+package com.conflux.collaborationservice;
 
 import java.util.Map;
 
