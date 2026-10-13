@@ -37,6 +37,9 @@ export const selectUnlinkedRepository = async () => {
 export const connectRepository = (projectId: string, workstreamId: string | null, path: string) =>
   invoke<RepositoryInfo>('connect_repository', { projectId, workstreamId, path });
 
+export const createWorktree = (projectId: string, workstreamId: string, branchName: string, baseRevision: string, createBranch: boolean) =>
+  invoke<RepositoryInfo>('create_worktree', { projectId, workstreamId, branchName, baseRevision, createBranch });
+
 export const restoreRepository = (projectId: string, workstreamId: string | null) =>
   invoke<RepositoryInfo | null>('restore_repository', { projectId, workstreamId });
 

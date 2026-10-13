@@ -7,6 +7,7 @@ pub fn run() {
         .manage(repository::RepositoryState::default())
         .invoke_handler(tauri::generate_handler![
             repository::connect_repository,
+            repository::create_worktree,
             repository::inspect_repository,
             repository::restore_repository,
             repository::read_repository_file,
