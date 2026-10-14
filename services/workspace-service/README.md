@@ -104,6 +104,7 @@ POST /api/projects
 GET  /api/projects
 GET  /api/projects/{projectId}
 PUT  /api/projects/{projectId}
+DELETE /api/projects/{projectId}
 GET  /api/projects/{projectId}/teams
 POST /api/projects/{projectId}/teams
 DELETE /api/projects/{projectId}/teams/{teamId}
@@ -119,6 +120,10 @@ Example create request:
 ```
 
 Projects are created without a team, and the creator is their owner. Owners can view and manage their projects, including assigning the first team. Project updates and team assignment are also available through `MANAGE_PROJECT`, which Identity grants only to the existing `ADMIN` and `TEAM_LEAD` roles for assigned teams. The project list contains projects owned by the authenticated user and projects connected to teams where that user has `VIEW_PROJECT`. Projects may have zero or more teams. Unauthorized resources return `404` to avoid exposing whether they exist.
+
+Only the project creator may delete a project. Deletion also removes its team assignments and workstreams through database cascades.
+
+A member of any team assigned to a project receives effective viewer access to the other teams' workstreams in that project. This does not create Identity Service team memberships and does not grant join, edit, create, approval, or management capabilities on those teams.
 
 ## Workstream API
 
@@ -145,14 +150,14 @@ Branch names are restricted before they can become inputs to local Git operation
 Workstream lifecycle target:
 
 ```text
-CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED
+CREATED -> ACTIVE -> REVIEWING -> READY_TO_MERGE -> MERGED -> ARCHIVED
               |           |              |
               +-> BLOCKED +-> BLOCKED    +-> CONFLICT
 ```
 
-Status changes use row locking so concurrent requests cannot bypass lifecycle checks. `MERGED` is terminal, and merged workstreams cannot be renamed. The public API cannot currently transition a workstream to `MERGED`; that transition remains reserved for the future trusted Git, test, review, and approval workflow.
+Status changes use row locking so concurrent requests cannot bypass lifecycle checks. Completed workstreams cannot be renamed, and `ARCHIVED` is terminal. The public API cannot currently transition a workstream to `MERGED`; that transition remains reserved for the future trusted Git, test, review, and approval workflow. Archiving a merged workstream releases its branch name for a future workstream.
 
-Every workstream belongs to exactly one team assigned to its project. Reading or changing it requires the capability on that exact team; membership in another project team does not grant access. Reading requires `VIEW_PROJECT`; creating, renaming, and ordinary lifecycle changes require `CREATE_WORKSTREAM`. Moving a workstream to `READY_TO_MERGE` or `CONFLICT` requires `APPROVE_CHANGE`.
+Every workstream belongs to exactly one team assigned to its project. Direct team capabilities control all changes. A member of another team assigned to the same project receives read-only viewer access, but cannot join or modify that team's workstream. Creating, renaming, and ordinary lifecycle changes require `CREATE_WORKSTREAM` on the owning team. Moving a workstream to `READY_TO_MERGE`, `CONFLICT`, or `ARCHIVED` requires `APPROVE_CHANGE` on that team.
 
 Example status request:
 
@@ -176,6 +181,7 @@ Current migrations:
 - `V2__create_workstreams.sql`
 - `V3__create_project_teams.sql`
 - `V4__scope_workstreams_to_teams.sql`
+- `V5__archive_workstreams.sql`
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
 

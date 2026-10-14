@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({ProjectController.class, WorkstreamController.class})
@@ -51,6 +52,18 @@ class ServiceSecurityConfigTests {
                 .andExpect(status().isOk());
 
         verify(projects).list(actorId);
+    }
+
+    @Test
+    void authenticatedProjectDeleteUsesTokenSubject() throws Exception {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        mvc.perform(delete("/api/projects/{projectId}", projectId)
+                        .with(jwt().jwt(token -> token.subject(actorId.toString()))))
+                .andExpect(status().isNoContent());
+
+        verify(projects).delete(actorId, projectId);
     }
 
     @Test

@@ -63,7 +63,7 @@ public class WorkstreamService {
         try {
             workstreams.saveAndFlush(workstream);
         } catch (DataIntegrityViolationException failure) {
-            if (hasConstraint(failure, "workstreams_project_branch_uq")) {
+            if (hasConstraint(failure, "workstreams_active_project_branch_uq")) {
                 throw new WorkstreamConflictException("This branch is already used by the project");
             }
             throw failure;
@@ -155,12 +155,15 @@ public class WorkstreamService {
     }
 
     private boolean requiresApproval(WorkstreamStatus status) {
-        return status == WorkstreamStatus.READY_TO_MERGE || status == WorkstreamStatus.CONFLICT;
+        return status == WorkstreamStatus.READY_TO_MERGE
+                || status == WorkstreamStatus.CONFLICT
+                || status == WorkstreamStatus.ARCHIVED;
     }
 
     private void requireMutable(Workstream workstream) {
-        if (workstream.getStatus() == WorkstreamStatus.MERGED) {
-            throw new WorkstreamConflictException("Merged workstreams cannot be changed");
+        if (workstream.getStatus() == WorkstreamStatus.MERGED
+                || workstream.getStatus() == WorkstreamStatus.ARCHIVED) {
+            throw new WorkstreamConflictException("Completed workstreams cannot be changed");
         }
     }
 
@@ -197,7 +200,8 @@ public class WorkstreamService {
                 EnumSet.of(WorkstreamStatus.ACTIVE, WorkstreamStatus.REVIEWING));
         transitions.put(WorkstreamStatus.CONFLICT,
                 EnumSet.of(WorkstreamStatus.ACTIVE, WorkstreamStatus.READY_TO_MERGE));
-        transitions.put(WorkstreamStatus.MERGED, Set.of());
+        transitions.put(WorkstreamStatus.MERGED, EnumSet.of(WorkstreamStatus.ARCHIVED));
+        transitions.put(WorkstreamStatus.ARCHIVED, Set.of());
         return Map.copyOf(transitions);
     }
 }

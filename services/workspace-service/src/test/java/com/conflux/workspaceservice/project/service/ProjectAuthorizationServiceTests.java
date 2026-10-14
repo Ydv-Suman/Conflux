@@ -94,7 +94,7 @@ class ProjectAuthorizationServiceTests {
     }
 
     @Test
-    void exactProjectTeamMembershipIsRequiredForWorkstreamAccess() {
+    void membershipInAnotherProjectTeamDoesNotGrantWriteAccess() {
         UUID actorId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID authTeam = UUID.randomUUID();
@@ -109,6 +109,42 @@ class ProjectAuthorizationServiceTests {
                 () -> authorization.requireProjectTeamCapability(
                         actorId, projectId, authTeam, TeamCapability.CREATE_WORKSTREAM));
         verify(identity, never()).getAuthorization(actorId, paymentTeam);
+    }
+
+    @Test
+    void membershipInAnotherProjectTeamGrantsViewerAccess() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID authTeam = UUID.randomUUID();
+        UUID paymentTeam = UUID.randomUUID();
+        when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, authTeam)).thenReturn(true);
+        when(projectTeams.findTeamIdsByProjectId(projectId))
+                .thenReturn(List.of(authTeam, paymentTeam));
+        when(identity.getAuthorization(actorId, authTeam))
+                .thenReturn(new TeamAuthorization(false, Set.of()));
+        when(identity.listMemberships(actorId)).thenReturn(List.of(
+                new TeamMembership(paymentTeam, Set.of(TeamCapability.VIEW_PROJECT))));
+
+        assertDoesNotThrow(() -> authorization.requireProjectTeamCapability(
+                actorId, projectId, authTeam, TeamCapability.VIEW_PROJECT));
+    }
+
+    @Test
+    void membershipOutsideProjectDoesNotGrantViewerAccess() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID authTeam = UUID.randomUUID();
+        UUID outsideTeam = UUID.randomUUID();
+        when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, authTeam)).thenReturn(true);
+        when(projectTeams.findTeamIdsByProjectId(projectId)).thenReturn(List.of(authTeam));
+        when(identity.getAuthorization(actorId, authTeam))
+                .thenReturn(new TeamAuthorization(false, Set.of()));
+        when(identity.listMemberships(actorId)).thenReturn(List.of(
+                new TeamMembership(outsideTeam, Set.of(TeamCapability.VIEW_PROJECT))));
+
+        assertThrows(ProjectNotFoundException.class,
+                () -> authorization.requireProjectTeamCapability(
+                        actorId, projectId, authTeam, TeamCapability.VIEW_PROJECT));
     }
 
     @Test
