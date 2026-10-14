@@ -46,10 +46,23 @@ public class ProjectAuthorizationService {
 
     public void requireProjectTeamCapability(
             UUID actorId, UUID projectId, UUID teamId, TeamCapability capability) {
-        if (!projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)
-                || !identity.getAuthorization(actorId, teamId).has(capability)) {
+        if (!projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)) {
             throw new ProjectNotFoundException();
         }
+        if (identity.getAuthorization(actorId, teamId).has(capability)) {
+            return;
+        }
+        if (capability == TeamCapability.VIEW_PROJECT && hasViewerAccess(actorId, projectId)) {
+            return;
+        }
+        throw new ProjectNotFoundException();
+    }
+
+    private boolean hasViewerAccess(UUID actorId, UUID projectId) {
+        List<UUID> assignedTeams = projectTeams.findTeamIdsByProjectId(projectId);
+        return identity.listMemberships(actorId).stream()
+                .anyMatch(membership -> assignedTeams.contains(membership.teamId())
+                        && membership.has(TeamCapability.VIEW_PROJECT));
     }
 
     public List<UUID> teamIdsWithCapability(UUID actorId, TeamCapability capability) {

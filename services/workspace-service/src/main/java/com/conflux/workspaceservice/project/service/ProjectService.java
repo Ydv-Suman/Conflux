@@ -108,6 +108,15 @@ public class ProjectService {
         return toDto(project);
     }
 
+    @Transactional
+    public void delete(UUID actorId, UUID projectId) {
+        Project project = projects.findForUpdate(projectId)
+                .filter(candidate -> candidate.getCreatedBy().equals(actorId))
+                .orElseThrow(ProjectNotFoundException::new);
+        projects.delete(project);
+        LOGGER.info("event=PROJECT_DELETED project_id={} actor_id={}", projectId, actorId);
+    }
+
     @Transactional(readOnly = true)
     public List<ProjectTeamDto> listTeams(UUID actorId, UUID projectId) {
         authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);

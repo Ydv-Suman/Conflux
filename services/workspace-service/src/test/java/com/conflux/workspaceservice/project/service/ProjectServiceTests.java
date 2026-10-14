@@ -95,6 +95,34 @@ class ProjectServiceTests {
     }
 
     @Test
+    void ownerCanDeleteProject() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Project project = new Project();
+        project.setProjectId(projectId);
+        project.setCreatedBy(actorId);
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(project));
+
+        service.delete(actorId, projectId);
+
+        verify(projects).delete(project);
+    }
+
+    @Test
+    void nonOwnerCannotDeleteProject() {
+        UUID actorId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Project project = new Project();
+        project.setProjectId(projectId);
+        project.setCreatedBy(UUID.randomUUID());
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(project));
+
+        assertThrows(ProjectNotFoundException.class, () -> service.delete(actorId, projectId));
+
+        verify(projects, never()).delete(any(Project.class));
+    }
+
+    @Test
     void teamWithWorkstreamsCannotBeRemoved() {
         UUID actorId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();

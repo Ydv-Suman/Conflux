@@ -6,6 +6,7 @@ public enum WorkstreamStatus {
     REVIEWING,
     READY_TO_MERGE,
     MERGED,
+    ARCHIVED,
     BLOCKED,
     CONFLICT
 }

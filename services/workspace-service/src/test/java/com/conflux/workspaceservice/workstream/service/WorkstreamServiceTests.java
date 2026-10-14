@@ -126,6 +126,40 @@ class WorkstreamServiceTests {
         verify(workstreams, never()).save(workstream);
     }
 
+    @Test
+    void mergedWorkstreamCanBeArchived() {
+        UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        UUID workstreamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Workstream workstream = workstream(
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.MERGED);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
+                .thenReturn(Optional.of(workstream));
+
+        service.updateStatus(actorId, projectId, teamId, workstreamId, WorkstreamStatus.ARCHIVED);
+
+        assertEquals(WorkstreamStatus.ARCHIVED, workstream.getStatus());
+        verify(workstreams).save(workstream);
+    }
+
+    @Test
+    void archivedWorkstreamCannotBeRenamed() {
+        UUID projectId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        UUID workstreamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Workstream workstream = workstream(
+                projectId, teamId, workstreamId, actorId, WorkstreamStatus.ARCHIVED);
+        when(workstreams.findForUpdate(workstreamId, projectId, teamId))
+                .thenReturn(Optional.of(workstream));
+
+        assertThrows(WorkstreamConflictException.class,
+                () -> service.update(actorId, projectId, teamId, workstreamId,
+                        new UpdateWorkstreamRequestDto("Renamed")));
+        verify(workstreams, never()).save(workstream);
+    }
+
     private Workstream workstream(
             UUID projectId,
             UUID teamId,

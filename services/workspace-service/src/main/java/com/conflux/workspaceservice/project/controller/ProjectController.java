@@ -58,6 +58,14 @@ public class ProjectController {
         return projects.update(userId(jwt), projectId, request);
     }
 
+    @DeleteMapping(path = "/{projectId}", version = "1.0")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID projectId) {
+        projects.delete(userId(jwt), projectId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping(path = "/{projectId}/teams", version = "1.0")
     public List<ProjectTeamDto> listTeams(
             @AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId) {
