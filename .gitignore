@@ -1,5 +1,6 @@
 /docs/TODO.md
 /docs/Conflux_architecture.pdf
+.conflux/
 services/.idea/
 secrets/
 .env

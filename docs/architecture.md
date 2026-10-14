@@ -16,6 +16,8 @@ This document describes the architecture being built. The current implementation
 
 A project is the team-visible repository. A workstream is the live collaboration and isolation boundary within that project.
 
+A workstream represents a durable feature, bug fix, or other shared initiative rather than a temporary coding session. Every active workstream owns one canonical branch, and only one non-archived workstream may own a given project and branch pair. Tasks, participant sessions, and agent runs live inside the workstream instead of creating more workstreams. The complete user and Git workflow is defined in [Workstream, Branch, and Agent Workflow](workstream-workflow.md).
+
 ```text
 Project
 ├── Authentication workstream -> branch/worktree -> participants and task runs
@@ -52,7 +54,9 @@ The repository currently contains:
 - a Tauri 2 + React + TypeScript desktop client with authentication, teams, projects, and workstream management
 - Java/Spring Boot identity and workspace services
 - a Java/Spring WebFlux collaboration-service prototype that relays opaque binary updates by project, workstream, and document and replays in-memory history after reconnect
-- no implemented Monaco editor, Yjs client binding, durable collaboration persistence, or agent service yet
+- a Monaco editor bound to a Yjs document and connected to the collaboration-service relay
+- local repository inspection, protected text-file reads and writes, and per-workstream Git worktree creation
+- no automatic WebSocket reconnect, durable collaboration persistence, two-client convergence test, or agent service yet
 
 The next implementation milestone is therefore a narrow multiplayer-editor proof, not another business service.
 
@@ -139,6 +143,8 @@ Task #101 in Authentication
 
 Every run receives task and workstream context: project, branch, base and current revisions, relevant documents, participants, task conversation, and current candidate patch. Runs from unrelated workstreams do not share conversational or repository context.
 
+Each run executes in an isolated temporary worktree or remote environment created at an exact workstream revision. It never switches or edits a human participant's managed worktree. Temporary agent refs belong to the task run and do not create visible workstreams.
+
 Agent output is always a candidate patch. Before application, Workspace validates its paths, base revision, current workstream revision, policy, review evidence, and test evidence. Human approval is required before it enters the collaborative workstream.
 
 ## Workstream isolation and merge
@@ -155,9 +161,15 @@ project checkout
 
 The exact storage location is implementation-defined and must not require `.conflux` to be committed. Switching workstreams changes the active worktree instead of rewriting one shared directory between incompatible states.
 
+Branch selection is a join-or-create operation. Selecting a branch already owned by an active workstream opens that workstream; selecting an available local or remote branch offers lightweight workstream creation. Workspace enforces unique active ownership of the `(project, canonical branch)` pair.
+
+Managed worktrees remain bound to their workstream branch. If an external Git command changes `HEAD`, the desktop pauses collaboration until the user opens the matching workstream or restores the expected branch.
+
 Workspace compares changed paths, and later changed line ranges, across active workstreams. It reports potential overlap early but leaves conflict resolution to Git and explicit human review.
 
-When a workstream merges, every project member can see that the project base has advanced. Other workstreams are marked behind, but their files are not changed automatically. Their participants must explicitly review and update or rebase the workstream; workstreams are never silently rebased or merged.
+When a workstream merges, every project member can see that the project base has advanced. Other active workstreams are marked behind, but their files are not changed automatically. Their participants must explicitly review and update their workstream.
+
+Updating an actively shared workstream merges the project base branch by default because rebasing rewrites shared commit identifiers. Rebase is an explicit coordinated operation that requires checkpointed edits, a temporary write freeze, a recoverable pre-rebase revision, and conflict handling. Workstreams are never silently rebased, merged, or reset.
 
 ## Critical editing path
 
@@ -193,11 +205,12 @@ Team or project chat is available to every project member, regardless of active 
 1. Prove one hardcoded workstream with two desktop clients, Yjs, and a Java WebFlux WebSocket relay.
 2. Add reconnect synchronization, local persistence, and one two-client convergence test.
 3. Add project/workstream identifiers, ephemeral cursor and presence messages, and bounded room behavior.
-4. Add project and workstream creation backed by Git branches and local worktrees.
-5. Connect the existing Identity and Team service for authenticated room authorization and capabilities.
-6. Add per-workstream chat, overlap detection, update-from-base, and merge lifecycle.
-7. Add a per-workstream shared terminal with one explicit execution host.
-8. Add task-scoped Agent runs and the candidate-patch approval workflow.
+4. Enforce branch ownership and add branch-driven workstream join, creation, and fast switching on local worktrees.
+5. Add merge-based update-from-base, explicit conflicts, and the controlled rebase workflow.
+6. Connect the existing Identity and Team service for authenticated room authorization and capabilities.
+7. Add per-workstream chat, overlap detection, and merge lifecycle.
+8. Add a per-workstream shared terminal with one explicit execution host.
+9. Add task-scoped Agent runs in isolated worktrees and the candidate-patch approval workflow.
 
 Build infrastructure only when its milestone requires it. Do not add Redis, distributed room ownership, service discovery, or cross-service RPC to the first convergence proof.
 

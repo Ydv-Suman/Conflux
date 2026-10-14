@@ -68,6 +68,8 @@ Team -> Project -> Workstream -> Task -> Agent Runs
 
 A workstream behaves like a collaborative feature branch. It owns a branch and base revision, active collaborative documents, participants, task and agent context, shared chat and terminal context, and a merge lifecycle.
 
+A workstream represents a durable shared initiative, not every coding session or AI task. One active workstream owns a project branch; choosing an owned branch joins that workstream, while choosing an available local or remote branch can create one. Tasks and isolated AI runs remain inside the workstream. See [Workstream, Branch, and Agent Workflow](docs/workstream-workflow.md) for branch discovery, fast switching, base updates, rebase policy, and agent isolation.
+
 ```text
 Project
 ├── Authentication workstream -> live collaboration -> Git branch/worktree
