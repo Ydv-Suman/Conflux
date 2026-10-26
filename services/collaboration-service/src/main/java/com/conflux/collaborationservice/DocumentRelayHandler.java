@@ -77,12 +77,13 @@ final class DocumentRelayHandler implements WebSocketHandler {
     }
 
     private Mono<Void> close(WebSocketSession session, Throwable error) {
-        return session.close(new CloseStatus(
+        // Netty ends receive before flushing close; cancellation must not release that in-flight frame.
+        return Mono.defer(() -> session.close(new CloseStatus(
                 error instanceof DocumentAuthorization.Denied denied ? denied.code
                         : error instanceof IllegalArgumentException ? 1008 : 1013,
                 error instanceof DocumentAuthorization.Denied ? "Authentication or team access required"
                         : error instanceof IllegalArgumentException ? "Invalid document message"
-                        : "Collaboration unavailable; reconnect to recover"));
+                        : "Collaboration unavailable; reconnect to recover"))).cache();
     }
 
     private synchronized Connection join(DocumentId document, String id, UUID actor) throws IOException {
