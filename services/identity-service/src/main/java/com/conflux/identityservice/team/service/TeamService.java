@@ -1,6 +1,5 @@
 package com.conflux.identityservice.team.service;
 
-import com.conflux.identityservice.team.dto.AddTeamMemberRequestDto;
 import com.conflux.identityservice.team.dto.CreateTeamRequestDto;
 import com.conflux.identityservice.team.dto.TeamCapabilitiesDto;
 import com.conflux.identityservice.team.dto.TeamDto;
@@ -21,7 +20,6 @@ import com.conflux.identityservice.user.repository.UserEmailRepository;
 import com.conflux.identityservice.user.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -108,39 +106,6 @@ public class TeamService {
     }
 
     @Transactional
-    public TeamMemberDto addMember(UUID actorId, UUID teamId, AddTeamMemberRequestDto request) {
-        List<TeamMember> lockedMembers = members.findAllForUpdate(teamId);
-        TeamMember actor = findMember(lockedMembers, actorId);
-        authorization.requireCapability(actor, Capability.MANAGE_MEMBERS);
-        authorization.requireCanManageRole(actor.getRole(), UserRole.VIEWER, request.role());
-
-        UserEmail targetEmail = emails.findVerifiedByEmail(request.email())
-                .orElseThrow(UserNotFoundException::new);
-        User target = targetEmail.getUser();
-        if (containsUser(lockedMembers, target.getUserId())) {
-            throw new TeamMembershipConflictException("User is already a team member");
-        }
-
-        Team team = teams.findById(teamId).orElseThrow(TeamNotFoundException::new);
-        TeamMember membership = new TeamMember();
-        membership.setTeam(team);
-        membership.setUser(target);
-        membership.setRole(request.role());
-        try {
-            members.saveAndFlush(membership);
-        } catch (DataIntegrityViolationException failure) {
-            if (hasConstraint(failure, "team_members_team_user_uq")) {
-                throw new TeamMembershipConflictException("User is already a team member");
-            }
-            throw failure;
-        }
-
-        LOGGER.info("event=TEAM_MEMBER_ADDED team_id={} actor_id={} target_id={} role={}",
-                teamId, actorId, target.getUserId(), request.role());
-        return toMemberDto(membership);
-    }
-
-    @Transactional
     public TeamMemberDto updateRole(
             UUID actorId, UUID teamId, UUID targetId, UserRole requestedRole) {
         List<TeamMember> lockedMembers = members.findAllForUpdate(teamId);
@@ -192,22 +157,6 @@ public class TeamService {
                 .filter(member -> member.getUser().getUserId().equals(userId))
                 .findFirst()
                 .orElseThrow(TeamNotFoundException::new);
-    }
-
-    private boolean containsUser(List<TeamMember> teamMembers, UUID userId) {
-        return teamMembers.stream()
-                .anyMatch(member -> member.getUser().getUserId().equals(userId));
-    }
-
-    private boolean hasConstraint(Throwable failure, String constraintName) {
-        Throwable current = failure;
-        while (current != null) {
-            if (current.getMessage() != null && current.getMessage().contains(constraintName)) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
     private void requireAdminRemains(
