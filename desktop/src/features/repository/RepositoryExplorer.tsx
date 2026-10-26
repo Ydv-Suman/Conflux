@@ -7,7 +7,7 @@ function FileTree({ entries, onOpen }: { entries: RepositoryFile[]; onOpen: (fil
 }
 
 export function RepositoryExplorer({ repository, onConnect, onChooseWorkstream, onOpen }: { repository: RepositoryInfo | null; onConnect: () => void; onChooseWorkstream: () => void; onOpen: (file: RepositoryFile) => void }) {
-  if (!repository) return <div className="grid gap-2"><button className="neutral-button-filled w-full" type="button" onClick={onConnect}>Select local folder</button><button className="neutral-button w-full" type="button" onClick={onChooseWorkstream}>Choose team / workstream</button></div>;
+  if (!repository) return <div className="grid gap-2"><button className="neutral-button-filled w-full" type="button" onClick={onConnect}>Select local folder</button><button className="neutral-button w-full" type="button" onClick={onChooseWorkstream}>Choose team</button></div>;
   return <nav aria-label="Repository files">
     <div className="mb-3 border-b border-[#d8d6ce] pb-3"><strong className="block truncate text-sm">{repository.name}</strong><span className="mt-1 block truncate font-mono text-[10px] text-[#6d716b]">{repository.branch} · {repository.revision.slice(0, 7)}{repository.modified ? ' · modified' : ''}</span></div>
     <FileTree entries={repository.files} onOpen={onOpen} />

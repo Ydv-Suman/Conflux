@@ -83,29 +83,18 @@ pub fn create_worktree(
     app: AppHandle,
     state: State<'_, RepositoryState>,
 ) -> Result<RepositoryInfo, String> {
-    let source = state
-        .0
-        .lock()
-        .map_err(|_| "Repository state is unavailable.".to_string())?
-        .clone()
-        .ok_or_else(|| "Connect a local repository first.".to_string())?;
-    let source = validate_repository(source.to_string_lossy().as_ref())?;
+    let connection = database(&app)?;
+    let source: Option<String> = connection.query_row(
+        "SELECT repository_path FROM repository_mappings WHERE project_id=?1 AND workstream_id=''",
+        params![project_id], |row| row.get(0),
+    ).optional().map_err(database_error)?;
+    let source = validate_repository(&source.ok_or_else(|| "Connect a local repository first.".to_string())?)?;
     if !git(&source, &["status", "--porcelain"])?.is_empty() {
         return Err("Commit or stash local changes before starting work.".into());
     }
     validate_identifier(&project_id, "project")?;
     validate_identifier(&workstream_id, "workstream")?;
-    git(&source, &["check-ref-format", "--branch", &branch_name])
-        .map_err(|_| "Enter a valid Git branch name.".to_string())?;
-    git(
-        &source,
-        &[
-            "rev-parse",
-            "--verify",
-            &format!("{base_revision}^{{commit}}"),
-        ],
-    )
-    .map_err(|_| "The starting revision is no longer available.".to_string())?;
+    validate_worktree_revision(&source, &branch_name, &base_revision, create_branch)?;
 
     let root = app
         .path()
@@ -146,7 +135,6 @@ pub fn create_worktree(
         });
     }
 
-    let connection = database(&app)?;
     if let Err(error) = connection.execute(
         "INSERT INTO repository_mappings (project_id, workstream_id, repository_path, last_opened_at) VALUES (?1, ?2, ?3, unixepoch()) ON CONFLICT(project_id, workstream_id) DO UPDATE SET repository_path=excluded.repository_path, last_opened_at=excluded.last_opened_at",
         params![project_id, workstream_id, destination],
@@ -156,6 +144,55 @@ pub fn create_worktree(
         return Err(database_error(error));
     }
     inspect_repository_data(root, None, state)
+}
+
+fn validate_worktree_revision(source: &Path, branch: &str, revision: &str, create_branch: bool) -> Result<(), String> {
+    git(source, &["check-ref-format", "--branch", branch])
+        .map_err(|_| "Enter a valid Git branch name.".to_string())?;
+    if !matches!(revision.len(), 40 | 64) || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("The shared revision must be a full Git commit ID.".into());
+    }
+    let expected = git(source, &["rev-parse", "--verify", &format!("{revision}^{{commit}}")])
+        .map_err(|_| "The shared revision is unavailable locally. Fetch the project repository and retry.".to_string())?;
+    if !create_branch {
+        let actual = git(source, &["rev-parse", "--verify", &format!("refs/heads/{branch}^{{commit}}")])?;
+        if actual != expected {
+            return Err("This local branch differs from the shared revision. Reconcile it with the team before opening files. Your local changes have been preserved.".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod shared_workspace_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn shared_branch_requires_the_exact_revision_without_changing_local_work() {
+        let root = std::env::temp_dir().join(format!("conflux-shared-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-b", "main"]).unwrap();
+        git(&root, &["config", "user.email", "test@example.com"]).unwrap();
+        git(&root, &["config", "user.name", "Test"]).unwrap();
+        git(&root, &["-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "base"]).unwrap();
+        let base = git(&root, &["rev-parse", "HEAD"]).unwrap();
+        fs::create_dir_all(root.join("src/nested")).unwrap();
+        assert_eq!(validate_repository(root.join("src/nested").to_str().unwrap()).unwrap(), fs::canonicalize(&root).unwrap());
+        git(&root, &["branch", "conflux/team/test"]).unwrap();
+        assert!(validate_worktree_revision(&root, "conflux/team/test", &base, false).is_ok());
+        assert!(validate_worktree_revision(&root, "conflux/team/new", &base, true).is_ok());
+        git(&root, &["-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "later"]).unwrap();
+        let later = git(&root, &["rev-parse", "HEAD"]).unwrap();
+        fs::write(root.join("local.txt"), "keep my work").unwrap();
+        assert!(validate_worktree_revision(&root, "conflux/team/test", &later, false).unwrap_err().contains("differs"));
+        assert!(validate_worktree_revision(&root, "conflux/team/test", "HEAD", true).is_err());
+        assert!(validate_worktree_revision(&root, "conflux/team/test", &"0".repeat(40), true).unwrap_err().contains("unavailable"));
+        assert_eq!(git(&root, &["rev-parse", "HEAD"]).unwrap(), later);
+        assert_eq!(git(&root, &["rev-parse", "conflux/team/test"]).unwrap(), base);
+        assert_eq!(fs::read_to_string(root.join("local.txt")).unwrap(), "keep my work");
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[tauri::command]
@@ -315,8 +352,8 @@ fn validate_repository(path: &str) -> Result<PathBuf, String> {
     if !root.is_dir() {
         return Err("Select a folder containing a Git repository.".into());
     }
-    git(&root, &["rev-parse", "--is-inside-work-tree"])?;
-    Ok(root)
+    let top_level = git(&root, &["rev-parse", "--show-toplevel"])?;
+    fs::canonicalize(top_level).map_err(|_| "The repository root is unavailable.".to_string())
 }
 
 fn inspect_repository_data(
