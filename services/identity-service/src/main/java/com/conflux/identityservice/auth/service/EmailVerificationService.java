@@ -62,10 +62,14 @@ public class EmailVerificationService {
     @Transactional
     public void verify(String rawToken) {
         EmailVerificationToken token = tokenRepository
-                .findByTokenHashAndConsumedAtIsNull(hash(rawToken))
+                .findByTokenHash(hash(rawToken))
                 .orElseThrow(() -> invalidToken());
         Instant now = Instant.now();
         if (!token.getExpiresAt().isAfter(now)) {
+            throw invalidToken();
+        }
+        if (token.getConsumedAt() != null) {
+            if (token.getUserEmail().getVerifiedAt() != null) return;
             throw invalidToken();
         }
         token.setConsumedAt(now);

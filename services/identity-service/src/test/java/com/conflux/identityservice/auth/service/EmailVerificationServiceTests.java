@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,8 +36,7 @@ class EmailVerificationServiceTests {
                             yield storedToken;
                         }
                         case "findLatestByUserEmailId" -> Optional.ofNullable(storedToken);
-                        case "findByTokenHashAndConsumedAtIsNull" -> Optional.ofNullable(storedToken)
-                                .filter(token -> token.getConsumedAt() == null)
+                        case "findByTokenHash" -> Optional.ofNullable(storedToken)
                                 .filter(token -> token.getTokenHash().equals(arguments[0]));
                         default -> throw new UnsupportedOperationException(method.getName());
                     });
@@ -53,7 +53,7 @@ class EmailVerificationServiceTests {
             tokenRepository, emailRepository, events, Duration.ofHours(24));
 
     @Test
-    void tokenIsHashedSingleUseAndVerifiesEmail() {
+    void tokenIsHashedAndRepeatedVerificationPreservesSuccess() {
         UserEmail email = new UserEmail();
         email.setEmail("user@example.com");
 
@@ -64,8 +64,18 @@ class EmailVerificationServiceTests {
         service.verify(event.rawToken());
         assertNotNull(email.getVerifiedAt());
         assertNotNull(storedToken.getConsumedAt());
+        Instant verifiedAt = email.getVerifiedAt();
+        Instant consumedAt = storedToken.getConsumedAt();
+        service.verify(event.rawToken());
+        assertEquals(verifiedAt, email.getVerifiedAt());
+        assertEquals(consumedAt, storedToken.getConsumedAt());
+    }
+
+    @Test
+    void unknownTokenCannotVerifyEmail() {
+        service.issue(new UserEmail());
         assertThrows(InvalidVerificationTokenException.class,
-                () -> service.verify(event.rawToken()));
+                () -> service.verify("unknown-token"));
     }
 
     @Test
@@ -88,5 +98,26 @@ class EmailVerificationServiceTests {
 
         assertThrows(InvalidVerificationTokenException.class,
                 () -> service.verify(event.rawToken()));
+    }
+
+    @Test
+    void expiredConsumedTokenIsStillRejected() {
+        service.issue(new UserEmail());
+        service.verify(event.rawToken());
+        storedToken.setExpiresAt(Instant.now().minusSeconds(1));
+
+        assertThrows(InvalidVerificationTokenException.class,
+                () -> service.verify(event.rawToken()));
+    }
+
+    @Test
+    void consumedTokenCannotVerifyAnUnverifiedEmail() {
+        UserEmail email = new UserEmail();
+        service.issue(email);
+        storedToken.setConsumedAt(Instant.now());
+
+        assertThrows(InvalidVerificationTokenException.class,
+                () -> service.verify(event.rawToken()));
+        org.junit.jupiter.api.Assertions.assertNull(email.getVerifiedAt());
     }
 }
