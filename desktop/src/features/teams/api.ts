@@ -62,11 +62,38 @@ export const listTeamMembers = (teamId: string) =>
 export const getMyTeamCapabilities = (teamId: string) =>
   authenticatedRequest<TeamCapabilities>(`/api/teams/${teamId}/capabilities/me`, 'GET');
 
-export const addTeamMember = (teamId: string, email: string, role: UserRole) =>
-  authenticatedPost<TeamMember>(`/api/teams/${teamId}/members`, { email, role });
-
 export const updateTeamMemberRole = (teamId: string, userId: string, role: UserRole) =>
   authenticatedRequest<TeamMember>(`/api/teams/${teamId}/members/${userId}/role`, 'PUT', { role });
 
 export const removeTeamMember = (teamId: string, userId: string) =>
   authenticatedRequest<void>(`/api/teams/${teamId}/members/${userId}`, 'DELETE');
+
+export type TeamInvitation = {
+  invitationId: string;
+  teamId: string;
+  teamName: string;
+  inviterId: string;
+  inviterUsername: string;
+  inviteeId: string;
+  inviteeUsername: string;
+  proposedRole: UserRole;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED' | 'EXPIRED';
+  createdAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+};
+
+export const inviteTeamMember = (teamId: string, email: string, role: UserRole) =>
+  authenticatedPost<TeamInvitation>(`/api/teams/${teamId}/invitations`, { email, role });
+
+export const listMyInvitations = () =>
+  authenticatedRequest<TeamInvitation[]>('/api/users/me/invitations', 'GET');
+
+export const listTeamInvitations = (teamId: string) =>
+  authenticatedRequest<TeamInvitation[]>(`/api/teams/${teamId}/invitations`, 'GET');
+
+export const respondToInvitation = (invitationId: string, accept: boolean) =>
+  authenticatedPost<TeamInvitation>(`/api/invitations/${invitationId}/${accept ? 'accept' : 'decline'}`);
+
+export const cancelTeamInvitation = (teamId: string, invitationId: string) =>
+  authenticatedRequest<void>(`/api/teams/${teamId}/invitations/${invitationId}`, 'DELETE');

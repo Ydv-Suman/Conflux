@@ -34,5 +34,24 @@ npm start         # Run the Tauri app
 npm run dev       # Run the Vite frontend
 npm run build     # Type-check and build the frontend
 npm run lint      # Lint TypeScript
+npm test          # Invitation API and component checks
 npm run package   # Build the native executable
 ```
+
+## Team invitations
+
+Use **Invite member** in a team's Members section to send an invitation to an
+existing user's verified email address. Role choices follow the signed-in user's
+team hierarchy. Sending an invitation does not add the recipient to the member list.
+Managers can view and cancel pending invitations below Members.
+
+The sidebar bell shows pending invitations. Open it to accept or decline; accepting
+refreshes available teams and projects. The inbox refreshes every 30 seconds while
+the app is visible, when the window regains focus, and through its Refresh button.
+Invitation polling does not reload the editor or discard an open file. Both themes
+use the existing shared form and button styles.
+
+These controls require the Identity Service invitation APIs and Flyway migration
+V9. Delivery is through the in-app inbox, without email or operating-system push
+notifications. The inbox and manager list initially show the latest 10 invitations. **Load more**
+reveals another 10 when available, up to the 100 returned by the backend.
