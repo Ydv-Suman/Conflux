@@ -204,6 +204,70 @@ Example status request:
 }
 ```
 
+## Shared project repository
+
+A project can publish one remote repository configuration for all of its assigned
+teams. It is stored on the project, so the configuring user does not need to stay
+online. This is repository metadata; the service does not clone, fetch, or verify
+the remote, its permissions, its branch, or the supplied commit.
+
+| Endpoint | Access | Result |
+| --- | --- | --- |
+| `GET /api/projects/{projectId}/repository` | Creator or `VIEW_PROJECT` on an assigned team | `200` with configuration; `204` if not configured |
+| `PUT /api/projects/{projectId}/repository` | Creator or `MANAGE_PROJECT` on an assigned team | `200` with the saved configuration and incremented version |
+
+Both routes use API version `1.0` and the JWT subject as the actor, consistent with
+other project endpoints. Unauthenticated requests return `401`; missing projects
+and users without the required capability return `404`. A pending invitation
+alone grants no access. Identity membership is checked on each request.
+
+First configuration request:
+
+```json
+{
+  "repositoryUrl": "https://github.com/example/iris-predictor.git",
+  "accessMode": "HTTPS_CREDENTIAL_HELPER",
+  "canonicalBranch": "main",
+  "canonicalRevision": "0123456789abcdef0123456789abcdef01234567",
+  "expectedVersion": 0
+}
+```
+
+The response contains `projectId`, `repositoryUrl`, `accessMode`, `canonicalBranch`,
+`canonicalRevision`, and `version` (initially `1`). Subsequent updates must send the
+last returned `version` as `expectedVersion`. Concurrent or stale writes return
+`409` without overwriting the winner. Reload before retrying; if a response was
+lost, GET the configuration to check whether it was saved. Ordinary project name
+and description updates also lock the project row to preserve repository settings.
+
+| Access mode | URL | Credentials used by the future desktop clone flow |
+| --- | --- | --- |
+| `PUBLIC` | HTTPS | No credentials |
+| `HTTPS_CREDENTIAL_HELPER` | HTTPS | Each user's Git credential helper |
+| `SSH_AGENT` | SSH URL with a username | Each user's SSH agent |
+
+SSH shorthand such as `git@github.com:example/repo.git` is normalized to
+`ssh://git@github.com/example/repo.git`. HTTPS user information, SSH passwords,
+query parameters, fragments, local paths, and unsupported transports are rejected.
+Access mode and URL transport must agree. No tokens, passwords, private keys, or
+local credential paths are stored or returned. Team membership does not grant
+permissions at the external Git provider; private repositories require each
+member to have provider access.
+
+`canonicalBranch` is a safe short Git branch name such as `main` or `release/v1`.
+`canonicalRevision` must be a full 40- or 64-character commit hash and is stored in
+lowercase. Invalid configuration returns `400`. The canonical project branch and
+revision define the project's starting point; each team's default workstream
+continues to own its distinct collaboration branch and current revision. Saving
+project configuration does not initialize, reset, rename, or advance workstreams.
+Clients must read both records when preparing a team's local workspace and verify
+that the remote contains the required commits before opening it. Changing the
+remote must preserve access to commits already used by existing workstreams.
+
+Existing projects migrate with no remote and version `0`. Their current desktop
+local-folder workflow remains compatible. Desktop configuration UI, authenticated
+clone/download, Git verification, and revision publication are subsequent work.
+
 ## Database migrations
 
 Flyway migrations are stored in:
@@ -220,6 +284,7 @@ Current migrations:
 - `V4__scope_workstreams_to_teams.sql`
 - `V5__archive_workstreams.sql`
 - `V6__shared_team_workstreams.sql`
+- `V7__project_repository_configuration.sql`
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
 

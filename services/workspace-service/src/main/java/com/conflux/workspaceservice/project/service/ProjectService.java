@@ -2,6 +2,8 @@ package com.conflux.workspaceservice.project.service;
 
 import com.conflux.workspaceservice.project.dto.CreateProjectRequestDto;
 import com.conflux.workspaceservice.project.dto.ProjectDto;
+import com.conflux.workspaceservice.project.dto.ProjectRepositoryDto;
+import com.conflux.workspaceservice.project.dto.UpdateProjectRepositoryRequestDto;
 import com.conflux.workspaceservice.project.dto.ProjectTeamDto;
 import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
 import com.conflux.workspaceservice.identity.client.TeamAuthorizationClient;
@@ -96,7 +98,7 @@ public class ProjectService {
     @Transactional
     public ProjectDto update(UUID actorId, UUID projectId, UpdateProjectRequestDto request) {
         authorization.requireProjectCapability(actorId, projectId, TeamCapability.MANAGE_PROJECT);
-        Project project = requireProject(projectId);
+        Project project = projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
         project.setName(request.name());
         project.setDescription(request.description());
         try {
@@ -109,6 +111,37 @@ public class ProjectService {
         }
         LOGGER.info("event=PROJECT_UPDATED project_id={} actor_id={}", projectId, actorId);
         return toDto(project);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectRepositoryDto getRepository(UUID actorId, UUID projectId) {
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.VIEW_PROJECT);
+        Project project = requireProject(projectId);
+        return project.getRepositoryUrl() == null ? null : toRepositoryDto(project);
+    }
+
+    @Transactional
+    public ProjectRepositoryDto updateRepository(UUID actorId, UUID projectId, UpdateProjectRepositoryRequestDto request) {
+        authorization.requireProjectCapability(actorId, projectId, TeamCapability.MANAGE_PROJECT);
+        Project project = projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
+        if (project.getRepositoryVersion() != request.expectedVersion()) {
+            throw new ProjectConflictException("Repository settings have changed; reload them before saving");
+        }
+        project.setRepositoryUrl(request.repositoryUrl());
+        project.setRepositoryAccessMode(request.accessMode());
+        project.setCanonicalBranch(request.canonicalBranch());
+        project.setCanonicalRevision(request.canonicalRevision());
+        project.setRepositoryVersion(project.getRepositoryVersion() + 1);
+        projects.saveAndFlush(project);
+        LOGGER.info("event=PROJECT_REPOSITORY_UPDATED project_id={} actor_id={} version={}",
+                projectId, actorId, project.getRepositoryVersion());
+        return toRepositoryDto(project);
+    }
+
+    private ProjectRepositoryDto toRepositoryDto(Project project) {
+        return new ProjectRepositoryDto(project.getProjectId(), project.getRepositoryUrl(),
+                project.getRepositoryAccessMode(), project.getCanonicalBranch(),
+                project.getCanonicalRevision(), project.getRepositoryVersion());
     }
 
     @Transactional

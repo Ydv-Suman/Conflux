@@ -2,6 +2,8 @@ package com.conflux.workspaceservice.project.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -41,6 +43,22 @@ public class Project {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Column(name = "repository_url", length = 2048)
+    private String repositoryUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "repository_access_mode", length = 30)
+    private RepositoryAccessMode repositoryAccessMode;
+
+    @Column(name = "canonical_branch", length = 200)
+    private String canonicalBranch;
+
+    @Column(name = "canonical_revision", length = 64)
+    private String canonicalRevision;
+
+    @Column(name = "repository_version", nullable = false)
+    private long repositoryVersion;
 
     @PrePersist
     void onCreate() {
