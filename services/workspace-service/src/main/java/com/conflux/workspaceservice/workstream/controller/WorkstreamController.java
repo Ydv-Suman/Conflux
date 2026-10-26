@@ -49,6 +49,19 @@ public class WorkstreamController {
         return workstreams.list(userId(jwt), projectId, teamId);
     }
 
+    @GetMapping(path = "/default", version = "1.0")
+    public WorkstreamDto getDefault(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID projectId, @PathVariable UUID teamId) {
+        return workstreams.getDefault(userId(jwt), projectId, teamId);
+    }
+
+    @PutMapping(path = "/default/repository", version = "1.0")
+    public WorkstreamDto initializeDefault(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID projectId, @PathVariable UUID teamId,
+            @Valid @RequestBody CreateWorkstreamRequestDto request) {
+        return workstreams.create(userId(jwt), projectId, teamId, request);
+    }
+
     @GetMapping(path = "/{workstreamId}", version = "1.0")
     public WorkstreamDto get(
             @AuthenticationPrincipal Jwt jwt,

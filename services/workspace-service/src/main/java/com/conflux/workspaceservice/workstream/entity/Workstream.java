@@ -44,10 +44,13 @@ public class Workstream {
     @Column(name = "branch_name", nullable = false, length = 200)
     private String branchName;
 
-    @Column(name = "base_revision", nullable = false, length = 64)
+    @Column(name = "default_workstream", nullable = false, updatable = false)
+    private boolean defaultWorkstream;
+
+    @Column(name = "base_revision", length = 64)
     private String baseRevision;
 
-    @Column(name = "current_revision", nullable = false, length = 64)
+    @Column(name = "current_revision", length = 64)
     private String currentRevision;
 
     @Enumerated(EnumType.STRING)

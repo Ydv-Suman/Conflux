@@ -101,6 +101,28 @@ class ServiceSecurityConfigTests {
                 .andExpect(status().isBadRequest());
     }
 
+    @Autowired
+    private WorkstreamService workstreams;
+
+    @Test
+    void defaultLookupUsesTokenSubjectAndLiteralRoute() throws Exception {
+        UUID actorId = UUID.randomUUID(); UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID();
+        mvc.perform(get("/api/projects/{projectId}/teams/{teamId}/workstreams/default", projectId, teamId)
+                .with(jwt().jwt(token -> token.subject(actorId.toString())))).andExpect(status().isOk());
+        verify(workstreams).getDefault(actorId, projectId, teamId);
+    }
+
+    @Test
+    void defaultRoutesRequireAuthentication() throws Exception {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID();
+        mvc.perform(get("/api/projects/{projectId}/teams/{teamId}/workstreams/default", projectId, teamId))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                "/api/projects/{projectId}/teams/{teamId}/workstreams/default/repository", projectId, teamId)
+                .contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
     @TestConfiguration
     static class StubConfig {
 

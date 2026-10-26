@@ -160,6 +160,69 @@ class WorkstreamServiceTests {
         verify(workstreams, never()).save(workstream);
     }
 
+    @Test
+    void everyMemberReadsTheSameDefaultWorkstream() {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID();
+        Workstream shared = workstream(projectId, teamId, UUID.randomUUID(), UUID.randomUUID(), WorkstreamStatus.ACTIVE);
+        shared.setDefaultWorkstream(true);
+        when(workstreams.findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(projectId, teamId))
+                .thenReturn(Optional.of(shared));
+        assertEquals(service.getDefault(UUID.randomUUID(), projectId, teamId).workstreamId(),
+                service.getDefault(UUID.randomUUID(), projectId, teamId).workstreamId());
+        org.junit.jupiter.api.Assertions.assertTrue(service.getDefault(UUID.randomUUID(), projectId, teamId).defaultWorkstream());
+    }
+
+    @Test
+    void defaultLookupChecksProjectTeamAccessBeforeReading() {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID(); UUID actorId = UUID.randomUUID();
+        org.mockito.Mockito.doThrow(new ProjectNotFoundException()).when(authorization)
+                .requireProjectTeamCapability(actorId, projectId, teamId,
+                        com.conflux.workspaceservice.identity.model.TeamCapability.VIEW_PROJECT);
+        assertThrows(ProjectNotFoundException.class, () -> service.getDefault(actorId, projectId, teamId));
+        verify(workstreams, never()).findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(projectId, teamId);
+    }
+
+    @Test
+    void initializationReusesDefaultAndNeverReplacesAnExistingRepository() {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID(); UUID actorId = UUID.randomUUID();
+        Workstream shared = workstream(projectId, teamId, UUID.randomUUID(), actorId, WorkstreamStatus.CREATED);
+        shared.setDefaultWorkstream(true); shared.setBaseRevision(null); shared.setCurrentRevision(null);
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(shared.getProject()));
+        when(workstreams.findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(projectId, teamId))
+                .thenReturn(Optional.of(shared));
+        var request = new com.conflux.workspaceservice.workstream.dto.CreateWorkstreamRequestDto("Shared", "team/shared", "ABCDEF1");
+        assertEquals(shared.getWorkstreamId(), service.create(actorId, projectId, teamId, request).workstreamId());
+        assertEquals("abcdef1", shared.getBaseRevision());
+        org.junit.jupiter.api.Assertions.assertTrue(service.create(actorId, projectId, teamId, request).repositoryReady());
+        verify(workstreams, org.mockito.Mockito.times(1)).saveAndFlush(shared);
+        assertThrows(WorkstreamConflictException.class, () -> service.create(actorId, projectId, teamId,
+                new com.conflux.workspaceservice.workstream.dto.CreateWorkstreamRequestDto("Other", "other", "1234567")));
+    }
+
+    @Test
+    void uninitializedDefaultCannotBecomeActive() {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID(); UUID actorId = UUID.randomUUID();
+        Workstream shared = workstream(projectId, teamId, UUID.randomUUID(), actorId, WorkstreamStatus.CREATED);
+        shared.setDefaultWorkstream(true); shared.setBaseRevision(null); shared.setCurrentRevision(null);
+        when(workstreams.findForUpdate(shared.getWorkstreamId(), projectId, teamId)).thenReturn(Optional.of(shared));
+        assertThrows(WorkstreamConflictException.class,
+                () -> service.updateStatus(actorId, projectId, teamId, shared.getWorkstreamId(), WorkstreamStatus.ACTIVE));
+        verify(workstreams, never()).save(shared);
+    }
+
+    @Test
+    void defaultCannotBeArchivedOrMerged() {
+        UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID(); UUID actorId = UUID.randomUUID();
+        Workstream shared = workstream(projectId, teamId, UUID.randomUUID(), actorId, WorkstreamStatus.READY_TO_MERGE);
+        shared.setDefaultWorkstream(true);
+        when(workstreams.findForUpdate(shared.getWorkstreamId(), projectId, teamId)).thenReturn(Optional.of(shared));
+        for (var status : java.util.List.of(WorkstreamStatus.MERGED, WorkstreamStatus.ARCHIVED)) {
+            assertThrows(WorkstreamConflictException.class,
+                    () -> service.updateStatus(actorId, projectId, teamId, shared.getWorkstreamId(), status));
+        }
+        verify(workstreams, never()).save(shared);
+    }
+
     private Workstream workstream(
             UUID projectId,
             UUID teamId,

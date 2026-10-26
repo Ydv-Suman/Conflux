@@ -7,7 +7,7 @@ Spring Boot service that owns Conflux project and workstream metadata. It record
 The service currently provides:
 
 - authenticated project creation, listing, lookup, and update
-- authenticated workstream creation, listing, lookup, update, and lifecycle transitions
+- one default shared workstream per project/team, repository initialization, listing, lookup, update, and lifecycle transitions
 - PostgreSQL persistence managed by Flyway
 - team-scoped authorization verified through the Identity Service gRPC API
 - validation for project data, Git branch names, and Git revision hashes
@@ -129,11 +129,48 @@ A member of any team assigned to a project receives effective viewer access to t
 
 ```text
 POST /api/projects/{projectId}/teams/{teamId}/workstreams
+GET  /api/projects/{projectId}/teams/{teamId}/workstreams/default
+PUT  /api/projects/{projectId}/teams/{teamId}/workstreams/default/repository
 GET  /api/projects/{projectId}/teams/{teamId}/workstreams
 GET  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}
 PUT  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}
 PUT  /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}/status
 ```
+
+Each project/team assignment has one default shared workstream. Assigning a team
+creates it in the same transaction. Members open the same stream through
+`GET .../workstreams/default`; they do not create separate streams for their tasks.
+The response adds `defaultWorkstream` and `repositoryReady` flags.
+
+A new default has `status: CREATED`, a planned branch `conflux/team/{teamId}`, and
+null `baseRevision` / `currentRevision`. This represents pending repository setup,
+not a fabricated Git commit. It cannot become active until initialized.
+
+`PUT .../workstreams/default/repository` initializes the shared stream using the
+request below. The existing POST workstreams route is an alias for that operation
+and retains its 201 response for older callers. Initialization requires
+`CREATE_WORKSTREAM`, validates Git metadata, and returns the existing default ID.
+Repeating initialization with the same branch and base revision is idempotent;
+requesting another branch or revision after setup returns 409. No additional
+feature workstream is created. These are metadata operations; the desktop must
+still validate Git results and implement project download before files are shared.
+
+The shared stream cannot transition to `MERGED` or `ARCHIVED`, so members always
+have a stable collaboration boundary. Existing non-default streams retain their
+previous lifecycle and remain readable. Migration V6 preserves all old streams,
+marks the oldest unfinished stream per project/team as default, and creates an
+uninitialized default for assignments with no unfinished streams. Ties are resolved
+by workstream UUID. Existing branches, revisions, and content are not changed.
+
+A database index enforces one default per project/team, and project row locking
+serializes initialization and team removal. New team assignments with only an
+uninitialized default may be removed; assignments with initialized streams or
+legacy workstream history remain protected from removal.
+
+Default lookup uses the existing `VIEW_PROJECT` authorization, including read-only
+cross-team project visibility. That visibility does not grant join, edit, or
+repository-initialization privileges. The desktop should use `JOIN_WORKSTREAM`
+and `EDIT_DOCUMENT` capabilities when entering a live session.
 
 Example create request:
 
@@ -182,6 +219,7 @@ Current migrations:
 - `V3__create_project_teams.sql`
 - `V4__scope_workstreams_to_teams.sql`
 - `V5__archive_workstreams.sql`
+- `V6__shared_team_workstreams.sql`
 
 Never edit a migration after it has been applied or merged. Add a new versioned migration for schema changes.
 
@@ -229,7 +267,7 @@ Tests must cover authorization failures, validation boundaries, lifecycle transi
 The following are intentionally deferred until their required boundary exists:
 
 - workstream participants
-- trusted Git branch and worktree execution
+- repository download and trusted Git branch and worktree execution
 - revision updates based on verified Git results
 - merge approval and conflict-resolution workflows
 - collaboration rooms, presence, chat, terminals, tasks, and agent runs
