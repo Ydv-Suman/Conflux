@@ -315,7 +315,7 @@ All team routes derive the acting user from the validated JWT subject:
 - `GET /api/teams/{teamId}` returns a team only to one of its members.
 - `PUT /api/teams/{teamId}` updates the team name and optional description when the actor can manage the team.
 - `GET /api/teams/{teamId}/members` lists members for an authorized team member.
-- `POST /api/teams/{teamId}/members` adds a verified user by email when the actor can manage members.
+- `POST /api/teams/{teamId}/members` creates an invitation for a verified user by email; it no longer creates membership directly. Its response is now `TeamInvitationDto`.
 - `PUT /api/teams/{teamId}/members/{memberId}/role` changes a role within the actor's authority.
 - `DELETE /api/teams/{teamId}/members/{memberId}` removes a member within the actor's authority.
 - `GET /api/teams/{teamId}/capabilities/me` returns the authenticated user's current team capabilities.
@@ -323,6 +323,51 @@ All team routes derive the acting user from the validated JWT subject:
 Membership mutations are rate-limited and audited. A `TEAM_LEAD` cannot assign or modify `ADMIN` or peer roles, and the final `ADMIN` cannot be removed, demoted, or delete their account until administration is transferred.
 
 Create and update requests accept a required `name` of up to 100 characters and an optional `description` of up to 500 characters. Blank descriptions are stored as `null`.
+
+## Team invitations and notification inbox
+
+Membership requires the recipient's explicit acceptance. Inviting an existing,
+verified user persists a pending invitation, which also serves as an in-app
+notification. No email or WebSocket delivery is performed: clients fetch the
+inbox when signed in and may poll it for updates. The response includes the team
+name, inviter username, proposed role, and timestamps without exposing emails.
+
+All endpoints require a bearer token and API version `1.0`, using the same
+version header as the other Identity APIs.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/api/teams/{teamId}/invitations` | Invite by `{ "email": "user@example.com", "role": "DEVELOPER" }`; returns 201 and invitation |
+| GET | `/api/users/me/invitations` | Recipient's latest 100 pending, unexpired invitations |
+| GET | `/api/teams/{teamId}/invitations` | Manager's latest 100 invitations, including resolved ones |
+| POST | `/api/invitations/{invitationId}/accept` | Accept and create membership atomically; returns invitation |
+| POST | `/api/invitations/{invitationId}/decline` | Decline without membership; returns invitation |
+| DELETE | `/api/teams/{teamId}/invitations/{invitationId}` | Manager cancels a pending invitation; returns 204 |
+
+The existing `POST /api/teams/{teamId}/members` endpoint is an alias for invitation
+creation, with the same request body. Callers must treat its result as a pending
+invitation rather than immediately displaying the recipient as a member.
+
+Invitations expire after seven days. Statuses are `PENDING`, `ACCEPTED`,
+`DECLINED`, `CANCELLED`, and `EXPIRED`. Expiration is enforced on every response
+attempt and reflected in team listings; expired invitations disappear from the
+notification inbox. A manager may send a replacement after expiry, decline, or
+cancellation. Only one pending invitation is allowed per team and recipient.
+
+Creating/listing/cancelling invitations requires `MANAGE_MEMBERS`. Creation and
+acceptance also enforce the role hierarchy. Acceptance rechecks the inviter's
+current membership and permissions and the recipient's verified email. A removed
+or demoted inviter cannot grant stale privileges. Only the authenticated recipient
+can accept or decline; other users receive 404. Invalid lifecycle transitions and
+duplicate invitations return 409. Invitation mutations use the existing team
+mutation rate limit and produce structured audit logs.
+
+Team memberships are locked before invitations during mutations. Acceptance and
+membership creation share one transaction. Repeating a successful accept or
+decline returns its current result without recreating membership, including if an
+accepted member was subsequently removed from the team. Flyway migration `V9`
+adds invitation storage, foreign keys, inbox indexes, and pending uniqueness.
+Existing memberships are unchanged.
 
 ## Run
 

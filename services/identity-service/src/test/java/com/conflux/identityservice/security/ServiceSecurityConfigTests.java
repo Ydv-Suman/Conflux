@@ -8,6 +8,8 @@ import com.conflux.identityservice.auth.service.AuthService;
 import com.conflux.identityservice.user.service.IUserService;
 import com.conflux.identityservice.shared.service.RateLimitService;
 import com.conflux.identityservice.team.service.TeamService;
+import com.conflux.identityservice.team.service.TeamInvitationService;
+import com.conflux.identityservice.team.controller.TeamInvitationController;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -29,7 +31,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.mock;
 
-@WebMvcTest({UserController.class, AuthController.class, TeamController.class})
+@WebMvcTest({UserController.class, AuthController.class, TeamController.class, TeamInvitationController.class})
 @Import({ServiceSecurityConfig.class, PathConfig.class, WebConfig.class,
         ServiceSecurityConfigTests.StubConfig.class})
 class ServiceSecurityConfigTests {
@@ -99,6 +101,49 @@ class ServiceSecurityConfigTests {
         org.mockito.Mockito.verify(userService).getUser(userId);
     }
 
+    @Test
+    void invitationRoutesRequireAuthentication() throws Exception {
+        String id = java.util.UUID.randomUUID().toString();
+        mvc.perform(get("/api/users/me/invitations")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/teams/" + id + "/invitations")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/invitations/" + id + "/accept")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/invitations/" + id + "/decline")).andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/teams/" + id + "/invitations/" + id)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void invitationInboxUsesAuthenticatedSubject() throws Exception {
+        var id = java.util.UUID.randomUUID();
+        mvc.perform(get("/api/users/me/invitations").with(jwt().jwt(token -> token.subject(id.toString()))))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(invitationService).inbox(id);
+    }
+
+    @Autowired
+    private TeamInvitationService invitationService;
+
+    @Test
+    void oldAddMemberRouteCreatesInvitationInstead() throws Exception {
+        var actorId = java.util.UUID.randomUUID();
+        var teamId = java.util.UUID.randomUUID();
+        mvc.perform(post("/api/teams/" + teamId + "/members")
+                        .with(jwt().jwt(token -> token.subject(actorId.toString())))
+                        .contentType("application/json")
+                        .content("{\"email\":\"target@example.com\",\"role\":\"DEVELOPER\"}"))
+                .andExpect(status().isCreated());
+        org.mockito.Mockito.verify(invitationService).invite(org.mockito.ArgumentMatchers.eq(actorId),
+                org.mockito.ArgumentMatchers.eq(teamId), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void invalidInvitationRequestReturnsBadRequest() throws Exception {
+        var id = java.util.UUID.randomUUID();
+        mvc.perform(post("/api/teams/" + id + "/invitations")
+                        .with(jwt().jwt(token -> token.subject(id.toString())))
+                        .contentType("application/json").content("{\"email\":\"invalid\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
     @TestConfiguration
     static class StubConfig {
 
@@ -120,6 +165,11 @@ class ServiceSecurityConfigTests {
         @Bean
         TeamService teamService() {
             return mock(TeamService.class);
+        }
+
+        @Bean
+        TeamInvitationService teamInvitationService() {
+            return mock(TeamInvitationService.class);
         }
 
         @Bean

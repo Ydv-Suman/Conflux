@@ -58,9 +58,9 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
     }
 
-    @ExceptionHandler(TeamNotFoundException.class)
+    @ExceptionHandler({TeamNotFoundException.class, com.conflux.identityservice.team.exception.InvitationNotFoundException.class})
     public ResponseEntity<ErrorResponseDto> handleTeamNotFound(
-            TeamNotFoundException ex, HttpServletRequest request) {
+            RuntimeException ex, HttpServletRequest request) {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
     }
 

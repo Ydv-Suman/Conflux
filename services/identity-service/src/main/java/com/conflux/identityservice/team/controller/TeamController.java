@@ -9,6 +9,8 @@ import com.conflux.identityservice.team.dto.UpdateTeamMemberRoleRequestDto;
 import com.conflux.identityservice.team.dto.UpdateTeamRequestDto;
 import com.conflux.identityservice.shared.service.RateLimitService;
 import com.conflux.identityservice.team.service.TeamService;
+import com.conflux.identityservice.team.service.TeamInvitationService;
+import com.conflux.identityservice.team.dto.TeamInvitationDto;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,9 +34,11 @@ public class TeamController {
 
     private final TeamService teams;
     private final RateLimitService rateLimits;
+    private final TeamInvitationService invitations;
 
-    public TeamController(TeamService teams, RateLimitService rateLimits) {
+    public TeamController(TeamService teams, RateLimitService rateLimits, TeamInvitationService invitations) {
         this.teams = teams;
+        this.invitations = invitations;
         this.rateLimits = rateLimits;
     }
 
@@ -74,14 +78,14 @@ public class TeamController {
     }
 
     @PostMapping(path = "/{teamId}/members", version = "1.0")
-    public ResponseEntity<TeamMemberDto> addMember(
+    public ResponseEntity<TeamInvitationDto> addMember(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID teamId,
             @Valid @RequestBody AddTeamMemberRequestDto request) {
         UUID actorId = userId(jwt);
         rateLimits.checkTeamMutation(actorId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(teams.addMember(actorId, teamId, request));
+                .body(invitations.invite(actorId, teamId, request));
     }
 
     @PutMapping(path = "/{teamId}/members/{memberId}/role", version = "1.0")
