@@ -30,8 +30,11 @@ class ProjectServiceTests {
     private final ProjectAuthorizationService authorization = mock(ProjectAuthorizationService.class);
     private final TeamAuthorizationClient identity = mock(TeamAuthorizationClient.class);
     private final WorkstreamRepository workstreams = mock(WorkstreamRepository.class);
+    private final com.conflux.workspaceservice.workstream.service.WorkstreamService shared =
+            mock(com.conflux.workspaceservice.workstream.service.WorkstreamService.class);
     private final ProjectService service =
-            new ProjectService(projects, projectTeams, authorization, identity, workstreams);
+            new ProjectService(projects, projectTeams, authorization, identity, workstreams,
+                    shared);
 
     @Test
     void listIsScopedToTeamsVisibleToUser() {
@@ -123,13 +126,23 @@ class ProjectServiceTests {
     }
 
     @Test
+    void assigningTeamAlsoCreatesItsDefaultWorkstream() {
+        UUID actorId = UUID.randomUUID(); UUID projectId = UUID.randomUUID(); UUID teamId = UUID.randomUUID();
+        Project project = new Project(); project.setProjectId(projectId);
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.of(project));
+        when(identity.getTeamSummaries(List.of(teamId))).thenReturn(List.of());
+        service.assignTeam(actorId, projectId, teamId);
+        verify(shared).ensureDefault(project, teamId, actorId);
+    }
+
+    @Test
     void teamWithWorkstreamsCannotBeRemoved() {
         UUID actorId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID teamId = UUID.randomUUID();
         when(projects.findForUpdate(projectId)).thenReturn(Optional.of(new Project()));
         when(projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
-        when(workstreams.existsByProjectProjectIdAndTeamId(projectId, teamId)).thenReturn(true);
+        when(workstreams.existsBlockingTeamRemoval(projectId, teamId)).thenReturn(true);
 
         assertThrows(ProjectConflictException.class,
                 () -> service.removeTeam(actorId, projectId, teamId));
@@ -147,6 +160,7 @@ class ProjectServiceTests {
 
         service.removeTeam(actorId, projectId, teamId);
 
+        verify(workstreams).deleteUninitializedDefault(projectId, teamId);
         verify(projectTeams).deleteByProjectProjectIdAndTeamId(projectId, teamId);
     }
 }

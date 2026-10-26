@@ -13,7 +13,21 @@ import java.util.UUID;
 
 public interface WorkstreamRepository extends JpaRepository<Workstream, UUID> {
 
-    boolean existsByProjectProjectIdAndTeamId(UUID projectId, UUID teamId);
+    Optional<Workstream> findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(UUID projectId, UUID teamId);
+
+    @Query("""
+            SELECT COUNT(w) > 0 FROM Workstream w
+            WHERE w.project.projectId = :projectId AND w.teamId = :teamId
+              AND (w.defaultWorkstream = false OR w.baseRevision IS NOT NULL)
+            """)
+    boolean existsBlockingTeamRemoval(@Param("projectId") UUID projectId, @Param("teamId") UUID teamId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("""
+            DELETE FROM Workstream w WHERE w.project.projectId = :projectId AND w.teamId = :teamId
+              AND w.defaultWorkstream = true AND w.baseRevision IS NULL
+            """)
+    void deleteUninitializedDefault(@Param("projectId") UUID projectId, @Param("teamId") UUID teamId);
 
     List<Workstream> findAllByProjectProjectIdAndTeamIdOrderByCreatedAtDesc(
             UUID projectId, UUID teamId);

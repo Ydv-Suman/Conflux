@@ -50,16 +50,17 @@ public class WorkstreamService {
             UUID actorId, UUID projectId, UUID teamId, CreateWorkstreamRequestDto request) {
         authorization.requireProjectTeamCapability(
                 actorId, projectId, teamId, TeamCapability.CREATE_WORKSTREAM);
-        Project project = requireProject(projectId);
-        Workstream workstream = new Workstream();
-        workstream.setProject(project);
-        workstream.setTeamId(teamId);
+        Project project = projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
+        Workstream workstream = ensureDefault(project, teamId, actorId);
+        if (workstream.getBaseRevision() != null) {
+            if (workstream.getBranchName().equals(request.branchName())
+                    && workstream.getBaseRevision().equalsIgnoreCase(request.baseRevision())) return toDto(workstream);
+            throw new WorkstreamConflictException("This team already has a shared workstream; open it instead");
+        }
         workstream.setName(request.name());
         workstream.setBranchName(request.branchName());
-        workstream.setBaseRevision(request.baseRevision().toLowerCase());
-        workstream.setCurrentRevision(request.baseRevision().toLowerCase());
-        workstream.setStatus(WorkstreamStatus.CREATED);
-        workstream.setCreatedBy(actorId);
+        workstream.setBaseRevision(request.baseRevision().toLowerCase(java.util.Locale.ROOT));
+        workstream.setCurrentRevision(request.baseRevision().toLowerCase(java.util.Locale.ROOT));
         try {
             workstreams.saveAndFlush(workstream);
         } catch (DataIntegrityViolationException failure) {
@@ -71,6 +72,30 @@ public class WorkstreamService {
         LOGGER.info("event=WORKSTREAM_CREATED project_id={} workstream_id={} actor_id={}",
                 projectId, workstream.getWorkstreamId(), actorId);
         return toDto(workstream);
+    }
+
+    /** Called within project assignment or initialization while the project row is locked. */
+    @Transactional
+    public Workstream ensureDefault(Project project, UUID teamId, UUID actorId) {
+        return workstreams.findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(project.getProjectId(), teamId)
+                .orElseGet(() -> {
+                    Workstream shared = new Workstream();
+                    shared.setProject(project);
+                    shared.setTeamId(teamId);
+                    shared.setName("Team workspace");
+                    shared.setBranchName("conflux/team/" + teamId);
+                    shared.setDefaultWorkstream(true);
+                    shared.setStatus(WorkstreamStatus.CREATED);
+                    shared.setCreatedBy(actorId);
+                    return workstreams.saveAndFlush(shared);
+                });
+    }
+
+    @Transactional(readOnly = true)
+    public WorkstreamDto getDefault(UUID actorId, UUID projectId, UUID teamId) {
+        authorization.requireProjectTeamCapability(actorId, projectId, teamId, TeamCapability.VIEW_PROJECT);
+        return toDto(workstreams.findByProjectProjectIdAndTeamIdAndDefaultWorkstreamTrue(projectId, teamId)
+                .orElseThrow(WorkstreamNotFoundException::new));
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +147,14 @@ public class WorkstreamService {
                 : TeamCapability.CREATE_WORKSTREAM;
         authorization.requireProjectTeamCapability(actorId, projectId, teamId, requiredCapability);
         Workstream workstream = requireWorkstreamForUpdate(workstreamId, projectId, teamId);
+        if (workstream.isDefaultWorkstream()
+                && (requestedStatus == WorkstreamStatus.MERGED || requestedStatus == WorkstreamStatus.ARCHIVED)) {
+            throw new WorkstreamConflictException("The shared team workstream cannot be completed or archived");
+        }
+        if (workstream.getBaseRevision() == null && requestedStatus != WorkstreamStatus.CREATED
+                && requestedStatus != WorkstreamStatus.BLOCKED) {
+            throw new WorkstreamConflictException("Initialize the shared repository before starting work");
+        }
         WorkstreamStatus currentStatus = workstream.getStatus();
         if (currentStatus == requestedStatus) {
             return toDto(workstream);
@@ -183,7 +216,8 @@ public class WorkstreamService {
                 workstream.getTeamId(), workstream.getName(), workstream.getBranchName(),
                 workstream.getBaseRevision(),
                 workstream.getCurrentRevision(), workstream.getStatus(), workstream.getCreatedBy(),
-                workstream.getCreatedAt(), workstream.getUpdatedAt());
+                workstream.getCreatedAt(), workstream.getUpdatedAt(), workstream.isDefaultWorkstream(),
+                workstream.getBaseRevision() != null && workstream.getCurrentRevision() != null);
     }
 
     private static Map<WorkstreamStatus, Set<WorkstreamStatus>> transitions() {

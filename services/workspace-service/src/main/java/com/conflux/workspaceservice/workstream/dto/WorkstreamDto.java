@@ -16,5 +16,7 @@ public record WorkstreamDto(
         WorkstreamStatus status,
         UUID createdBy,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        boolean defaultWorkstream,
+        boolean repositoryReady) {
 }

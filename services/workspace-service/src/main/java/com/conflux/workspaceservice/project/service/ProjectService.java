@@ -14,6 +14,7 @@ import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.project.repository.ProjectRepository;
 import com.conflux.workspaceservice.project.repository.ProjectTeamRepository;
 import com.conflux.workspaceservice.workstream.repository.WorkstreamRepository;
+import com.conflux.workspaceservice.workstream.service.WorkstreamService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,18 +38,20 @@ public class ProjectService {
     private final ProjectAuthorizationService authorization;
     private final TeamAuthorizationClient identity;
     private final WorkstreamRepository workstreams;
+    private final WorkstreamService sharedWorkstreams;
 
     public ProjectService(
             ProjectRepository projects,
             ProjectTeamRepository projectTeams,
             ProjectAuthorizationService authorization,
             TeamAuthorizationClient identity,
-            WorkstreamRepository workstreams) {
+            WorkstreamRepository workstreams, WorkstreamService sharedWorkstreams) {
         this.projects = projects;
         this.projectTeams = projectTeams;
         this.authorization = authorization;
         this.identity = identity;
         this.workstreams = workstreams;
+        this.sharedWorkstreams = sharedWorkstreams;
     }
 
     @Transactional
@@ -137,7 +140,7 @@ public class ProjectService {
     public ProjectTeamDto assignTeam(UUID actorId, UUID projectId, UUID teamId) {
         authorization.requireProjectCapability(actorId, projectId, TeamCapability.MANAGE_PROJECT);
         authorization.requireTeamCapability(actorId, teamId, TeamCapability.MANAGE_PROJECT);
-        Project project = requireProject(projectId);
+        Project project = projects.findForUpdate(projectId).orElseThrow(ProjectNotFoundException::new);
         ProjectTeam assignment = new ProjectTeam();
         assignment.setProject(project);
         assignment.setTeamId(teamId);
@@ -150,6 +153,7 @@ public class ProjectService {
             }
             throw failure;
         }
+        sharedWorkstreams.ensureDefault(project, teamId, actorId);
         LOGGER.info("event=PROJECT_TEAM_ASSIGNED project_id={} team_id={} actor_id={}",
                 projectId, teamId, actorId);
         TeamSummary summary = identity.getTeamSummaries(List.of(teamId)).stream()
@@ -165,9 +169,10 @@ public class ProjectService {
         if (!projectTeams.existsByProjectProjectIdAndTeamId(projectId, teamId)) {
             throw new ProjectNotFoundException();
         }
-        if (workstreams.existsByProjectProjectIdAndTeamId(projectId, teamId)) {
+        if (workstreams.existsBlockingTeamRemoval(projectId, teamId)) {
             throw new ProjectConflictException("A team with workstreams cannot be removed");
         }
+        workstreams.deleteUninitializedDefault(projectId, teamId);
         projectTeams.deleteByProjectProjectIdAndTeamId(projectId, teamId);
         LOGGER.info("event=PROJECT_TEAM_REMOVED project_id={} team_id={} actor_id={}",
                 projectId, teamId, actorId);
