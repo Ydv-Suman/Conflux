@@ -273,3 +273,79 @@ html[data-theme="dark"] #theme-toggle { color: #fff; }
     transition: none !important;
   }
 }
+
+/* Shared form colors cover project, team, member, and workstream dialogs. */
+:root {
+  --form-label: #30342f;
+  --form-surface: #fffefa;
+  --form-text: #1d211e;
+  --form-border: #c9c9c1;
+  --form-placeholder: #6d716b;
+}
+html[data-theme="dark"] {
+  --form-label: #d3d8de;
+  --form-surface: #262a2f;
+  --form-text: #eef0f3;
+  --form-border: #59616c;
+  --form-placeholder: #aeb5be;
+}
+.form-label { color: var(--form-label); }
+.form-input {
+  border-color: var(--form-border);
+  background: var(--form-surface);
+  color: var(--form-text);
+}
+.form-input::placeholder, .field-input::placeholder { color: var(--form-placeholder); opacity: 1; }
+.form-input:focus { border-color: #8996a7; box-shadow: 0 0 0 3px rgb(137 150 167 / .2); }
+.form-input option { background: var(--form-surface); color: var(--form-text); }
+html[data-theme="dark"] .field-label span { color: #adb2ba; }
+html[data-theme="dark"] .form-notice.is-error { border-color: #d98d83; background: #432925; color: #f3c0b9; }
+html[data-theme="dark"] .form-notice.is-success { border-color: #9daab8; background: #29343a; color: #d3e3eb; }
+html[data-theme="dark"] .modal-surface [class*="text-[#6d716b]"],
+html[data-theme="dark"] .modal-surface [class*="text-[#59616c]"] { color: #adb2ba !important; }
+html[data-theme="dark"] .modal-surface [class*="text-[#a54d45]"] { color: #f3a99e; }
+html[data-theme="dark"] .modal-surface [class*="border-[#d8d6ce]"] { border-color: #454a52; }
+
+.auth-page { color: #1d211e; color-scheme: light; }
+html[data-theme="dark"] .auth-page { color: #eef0f3; color-scheme: dark; }
+html[data-theme="dark"] .auth-page,
+html[data-theme="dark"] .auth-page > section { background: #1d2024; }
+html[data-theme="dark"] .auth-page > section { border-color: #454a52; }
+html[data-theme="dark"] .auth-page h1,
+html[data-theme="dark"] .auth-page h2 { color: #eef0f3; }
+html[data-theme="dark"] .auth-page [class*="text-[#6d716b]"],
+html[data-theme="dark"] .auth-page [class*="text-[#59616c]"],
+html[data-theme="dark"] .auth-page [class*="text-[#858981]"] { color: #adb2ba; }
+html[data-theme="dark"] .auth-page a,
+html[data-theme="dark"] .auth-page button[class*="text-[#414851]"],
+html[data-theme="dark"] .auth-page button[class*="text-[#4f554f]"] { color: #d3d8de; }
+html[data-theme="dark"] .auth-page button[class*="bg-[#fffefa]"] { border-color: #59616c; background: #262a2f; color: #eef0f3; }
+html[data-theme="dark"] .auth-page button[class*="bg-[#fffefa]"]:hover { background: #30343a; }
+html[data-theme="dark"] .auth-page dialog { background: #1d2024; color: #eef0f3; }
+
+.invitation-panel { --invitation-border: #d2d0c7; --invitation-muted: #59616c; --invitation-surface: #e5e3db; }
+.invitation-muted { color: var(--invitation-muted); }
+.invitation-card { margin-top: .5rem; border: 0; border-radius: 0; background: var(--invitation-surface); padding: .4rem 1rem; transition: transform 180ms ease; }
+.invitation-card:hover, .invitation-card:focus-within { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) {
+  .invitation-card:hover, .invitation-card:focus-within { transform: none; }
+}
+.invitation-row { border-bottom: 1px solid var(--invitation-border); }
+.invitation-feedback { border-left: 3px solid #66707c; padding: .65rem .75rem; font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+.invitation-feedback.is-error { border-color: #a54d45; background: #f8eae7; color: #7f342e; }
+.invitation-feedback.is-success { background: #e8e9e7; color: #414851; }
+.invitation-badge { position: absolute; top: .1rem; right: .05rem; min-width: 1rem; border-radius: 1rem; background: #a54d45; padding: .1rem .2rem; color: #fff; font-size: .6rem; font-weight: 700; line-height: 1.2; }
+html[data-theme="dark"] .invitation-panel { --invitation-border: #454a52; --invitation-muted: #b7bdc5; --invitation-surface: #292d32; }
+
+@media (hover: hover) and (pointer: fine) {
+  .invitation-actions { max-height: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: max-height 180ms ease, opacity 150ms ease; }
+  .invitation-card:hover .invitation-actions,
+  .invitation-card:focus-within .invitation-actions { max-height: 4rem; opacity: 1; pointer-events: auto; }
+}
+
+.invitation-actions { margin-top: .5rem; }
+@media (hover: hover) and (pointer: fine) {
+  .invitation-actions { margin-top: 0; }
+  .invitation-card:hover .invitation-actions,
+  .invitation-card:focus-within .invitation-actions { margin-top: .5rem; }
+}
