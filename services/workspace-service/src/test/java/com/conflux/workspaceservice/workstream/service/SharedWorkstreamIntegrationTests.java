@@ -5,6 +5,9 @@ import com.conflux.workspaceservice.identity.model.TeamCapability;
 import com.conflux.workspaceservice.identity.model.TeamAuthorization;
 import com.conflux.workspaceservice.identity.model.TeamSummary;
 import com.conflux.workspaceservice.project.dto.CreateProjectRequestDto;
+import com.conflux.workspaceservice.project.dto.UpdateProjectRepositoryRequestDto;
+import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
+import com.conflux.workspaceservice.project.entity.RepositoryAccessMode;
 import com.conflux.workspaceservice.project.service.ProjectService;
 import com.conflux.workspaceservice.project.exception.ProjectNotFoundException;
 import com.conflux.workspaceservice.project.exception.ProjectConflictException;
@@ -123,6 +126,65 @@ class SharedWorkstreamIntegrationTests {
         assertThrows(ProjectNotFoundException.class, () -> workstreams.create(stranger, projectId, teamId,
                 new CreateWorkstreamRequestDto("Shared", "team/shared", "abcdef1")));
         assertFalse(workstreams.getDefault(owner, projectId, teamId).repositoryReady());
+    }
+
+    @Test
+    void repositoryConfigurationPersistsWithoutChangingExistingWorkstreams() {
+        assertNull(projects.getRepository(owner, projectId));
+        var shared = workstreams.getDefault(owner, projectId, teamId);
+        var configured = projects.updateRepository(owner, projectId, repositoryRequest(0));
+        assertEquals(1, configured.version());
+        assertEquals(configured, projects.getRepository(member, projectId));
+        projects.update(owner, projectId, new UpdateProjectRequestDto("Renamed", null));
+        assertEquals(configured, projects.getRepository(owner, projectId));
+        assertEquals(shared, workstreams.getDefault(owner, projectId, teamId));
+        var updated = projects.updateRepository(owner, projectId, new UpdateProjectRepositoryRequestDto(
+                "git@git.example.com:team/repo.git", RepositoryAccessMode.SSH_AGENT, "release", "b".repeat(40), 1L));
+        assertEquals(2, updated.version());
+        assertEquals("ssh://git@git.example.com/team/repo.git", projects.getRepository(member, projectId).repositoryUrl());
+    }
+
+    @Test
+    void developersCanReadRepositoryButOnlyProjectManagersCanConfigureIt() {
+        when(identity.getAuthorization(member, teamId)).thenReturn(new TeamAuthorization(true, Set.of(TeamCapability.VIEW_PROJECT)));
+        projects.updateRepository(owner, projectId, repositoryRequest(0));
+        assertNotNull(projects.getRepository(member, projectId));
+        assertThrows(ProjectNotFoundException.class, () -> projects.updateRepository(member, projectId, repositoryRequest(1)));
+        when(identity.getAuthorization(member, teamId)).thenReturn(new TeamAuthorization(true, Set.of(TeamCapability.MANAGE_PROJECT)));
+        assertEquals(2, projects.updateRepository(member, projectId, repositoryRequest(1)).version());
+    }
+
+    @Test
+    void pendingInvitesUnrelatedAndRemovedMembersCannotReadOrWriteRepository() {
+        projects.updateRepository(owner, projectId, repositoryRequest(0));
+        UUID outsider = UUID.randomUUID();
+        when(identity.getAuthorization(outsider, teamId)).thenReturn(new TeamAuthorization(false, Set.of()));
+        assertThrows(ProjectNotFoundException.class, () -> projects.getRepository(outsider, projectId));
+        assertThrows(ProjectNotFoundException.class, () -> projects.updateRepository(outsider, projectId, repositoryRequest(1)));
+        assertNotNull(projects.getRepository(member, projectId));
+        when(identity.getAuthorization(member, teamId)).thenReturn(new TeamAuthorization(false, Set.of()));
+        assertThrows(ProjectNotFoundException.class, () -> projects.getRepository(member, projectId));
+    }
+
+    @Test
+    void concurrentRepositoryUpdatesHaveExactlyOneWinner() throws Exception {
+        var barrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Boolean> update = () -> {
+                barrier.await();
+                try { projects.updateRepository(owner, projectId, repositoryRequest(0)); return true; }
+                catch (ProjectConflictException stale) { return false; }
+            };
+            var first = executor.submit(update); var second = executor.submit(update);
+            assertNotEquals(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+        }
+        assertEquals(1, projects.getRepository(owner, projectId).version());
+        assertThrows(ProjectConflictException.class, () -> projects.updateRepository(owner, projectId, repositoryRequest(0)));
+    }
+
+    private UpdateProjectRepositoryRequestDto repositoryRequest(long version) {
+        return new UpdateProjectRepositoryRequestDto("https://git.example.com/team/repo.git",
+                RepositoryAccessMode.HTTPS_CREDENTIAL_HELPER, "main", "a".repeat(40), version);
     }
 
     private int count() {

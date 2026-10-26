@@ -123,6 +123,46 @@ class ServiceSecurityConfigTests {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void repositoryRoutesRequireAuthenticationAndUseTokenSubject() throws Exception {
+        UUID actorId = UUID.randomUUID(); UUID projectId = UUID.randomUUID();
+        String path = "/api/projects/" + projectId + "/repository";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+                .contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+        mvc.perform(get(path).with(jwt().jwt(token -> token.subject(actorId.toString()))))
+                .andExpect(status().isNoContent());
+        verify(projects).getRepository(actorId, projectId);
+        String json = """
+                {"repositoryUrl":"https://git.example.com/team/repo.git","accessMode":"PUBLIC",
+                 "canonicalBranch":"main","canonicalRevision":"%s","expectedVersion":0}
+                """.formatted("a".repeat(40));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+                .with(jwt().jwt(token -> token.subject(actorId.toString())))
+                .contentType("application/json").content(json)).andExpect(status().isOk());
+        verify(projects).updateRepository(org.mockito.ArgumentMatchers.eq(actorId), org.mockito.ArgumentMatchers.eq(projectId),
+                org.mockito.ArgumentMatchers.argThat(request -> request.expectedVersion() == 0L
+                        && request.canonicalRevision().equals("a".repeat(40))));
+    }
+
+    @Test
+    void repositoryConfigurationRejectsCredentialsAndMissingVersion() throws Exception {
+        String path = "/api/projects/" + UUID.randomUUID() + "/repository";
+        for (String json : new String[]{
+                """
+                {"repositoryUrl":"https://user:secret@git.example.com/repo","accessMode":"PUBLIC",
+                 "canonicalBranch":"main","canonicalRevision":"%s","expectedVersion":0}
+                """.formatted("a".repeat(40)),
+                """
+                {"repositoryUrl":"https://git.example.com/repo","accessMode":"PUBLIC",
+                 "canonicalBranch":"main","canonicalRevision":"%s"}
+                """.formatted("a".repeat(40))}) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(path)
+                    .with(jwt().jwt(token -> token.subject(UUID.randomUUID().toString())))
+                    .contentType("application/json").content(json)).andExpect(status().isBadRequest());
+        }
+    }
+
     @TestConfiguration
     static class StubConfig {
 

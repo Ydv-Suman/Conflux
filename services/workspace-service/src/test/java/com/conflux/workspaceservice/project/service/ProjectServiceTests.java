@@ -88,7 +88,7 @@ class ProjectServiceTests {
     void missingAuthorizedProjectCannotBeUpdated() {
         UUID projectId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        when(projects.findByProjectId(projectId)).thenReturn(Optional.empty());
+        when(projects.findForUpdate(projectId)).thenReturn(Optional.empty());
 
         assertThrows(ProjectNotFoundException.class,
                 () -> service.update(actorId, projectId, new UpdateProjectRequestDto("Renamed", null)));

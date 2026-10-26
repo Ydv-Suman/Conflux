@@ -2,6 +2,8 @@ package com.conflux.workspaceservice.project.controller;
 
 import com.conflux.workspaceservice.project.dto.CreateProjectRequestDto;
 import com.conflux.workspaceservice.project.dto.ProjectDto;
+import com.conflux.workspaceservice.project.dto.ProjectRepositoryDto;
+import com.conflux.workspaceservice.project.dto.UpdateProjectRepositoryRequestDto;
 import com.conflux.workspaceservice.project.dto.ProjectTeamDto;
 import com.conflux.workspaceservice.project.dto.AssignProjectTeamRequestDto;
 import com.conflux.workspaceservice.project.dto.UpdateProjectRequestDto;
@@ -56,6 +58,18 @@ public class ProjectController {
             @PathVariable UUID projectId,
             @Valid @RequestBody UpdateProjectRequestDto request) {
         return projects.update(userId(jwt), projectId, request);
+    }
+
+    @GetMapping(path = "/{projectId}/repository", version = "1.0")
+    public ResponseEntity<ProjectRepositoryDto> getRepository(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId) {
+        ProjectRepositoryDto repository = projects.getRepository(userId(jwt), projectId);
+        return repository == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(repository);
+    }
+
+    @PutMapping(path = "/{projectId}/repository", version = "1.0")
+    public ProjectRepositoryDto updateRepository(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId,
+            @Valid @RequestBody UpdateProjectRepositoryRequestDto request) {
+        return projects.updateRepository(userId(jwt), projectId, request);
     }
 
     @DeleteMapping(path = "/{projectId}", version = "1.0")

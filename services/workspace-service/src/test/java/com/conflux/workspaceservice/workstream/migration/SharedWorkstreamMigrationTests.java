@@ -35,6 +35,10 @@ class SharedWorkstreamMigrationTests {
         seed(jdbc, UUID.randomUUID(), project, completedTeam, actor, "MERGED", "feature/merged", 2);
         seed(jdbc, UUID.randomUUID(), project, completedTeam, actor, "ARCHIVED", "feature/archived", 1);
         Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword()).load().migrate();
+        assertEquals(0L, jdbc.queryForObject("SELECT repository_version FROM projects WHERE project_id = ?", Long.class, project));
+        assertNull(jdbc.queryForObject("SELECT repository_url FROM projects WHERE project_id = ?", String.class, project));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                "UPDATE projects SET repository_url = 'https://git.example.com/repo' WHERE project_id = ?", project));
         assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM workstreams", Integer.class));
         assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM workstreams WHERE default_workstream", Integer.class));
         assertEquals(oldest, jdbc.queryForObject("SELECT workstream_id FROM workstreams WHERE team_id = ? AND default_workstream", UUID.class, activeTeam));
