@@ -1,9 +1,11 @@
 server:
   port: 8090
 
-
 spring:
   application:
     name: collaboration-service
 
-
+app:
+  identity-url: ${IDENTITY_API_URL:http://localhost:8080}
+  workspace-url: ${WORKSPACE_API_URL:http://localhost:9000}
+  document-directory: ${COLLABORATION_DATA_DIR:./.conflux/documents}
