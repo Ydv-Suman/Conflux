@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import type { ProjectRepository } from '../projects/api';
 
 export type RepositoryFile = {
   path: string;
@@ -56,3 +57,18 @@ export const saveLastWorkspace = (projectId: string, teamId: string, workstreamI
   invoke<void>('save_last_workspace', { projectId, teamId, workstreamId });
 
 export const loadLastWorkspace = () => invoke<LastWorkspace | null>('load_last_workspace');
+
+export const selectDownloadFolder = async () => {
+  const path = await open({ directory: true, multiple: false, title: 'Choose where to download the project' });
+  return typeof path === 'string' ? path : null;
+};
+
+export const downloadRepository = (configuration: ProjectRepository, parentPath: string, checkoutBranch: string, checkoutRevision: string) =>
+  invoke<RepositoryInfo>('download_repository', { request: {
+    projectId: configuration.projectId, parentPath, repositoryUrl: configuration.repositoryUrl,
+    accessMode: configuration.accessMode, canonicalBranch: configuration.canonicalBranch,
+    canonicalRevision: configuration.canonicalRevision, checkoutBranch, checkoutRevision,
+  } });
+
+export type RepositoryMetadata = { remoteUrl: string | null; branch: string; revision: string };
+export const readRepositoryMetadata = (path: string) => invoke<RepositoryMetadata>('repository_metadata', { path });

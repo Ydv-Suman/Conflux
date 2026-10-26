@@ -76,9 +76,10 @@ export function useInvitationInbox() {
   return { ...inbox, pendingId, feedback, respond };
 }
 
-export function InvitationInbox({ inbox, onAccepted }: {
+export function InvitationInbox({ inbox, onAccepted, disabled = false }: {
   inbox: ReturnType<typeof useInvitationInbox>;
-  onAccepted: () => Promise<void>;
+  disabled?: boolean;
+  onAccepted: (invitation: TeamInvitation) => Promise<void>;
 }) {
   return <div className="invitation-panel p-4">
     <header className="mb-5 flex items-center justify-between gap-3"><h2 className="m-0 text-base font-semibold">Invitations</h2><button className="neutral-button min-h-8 px-3 text-xs" disabled={inbox.loading || !!inbox.pendingId} onClick={() => void inbox.refresh()}>Refresh</button></header>
@@ -88,7 +89,7 @@ export function InvitationInbox({ inbox, onAccepted }: {
     <ul className="-mx-4 my-0 list-none p-0">{inbox.items.slice(0, inbox.visibleCount).map((item) => <li className="invitation-card" key={item.invitationId}>
       <div className="flex items-start justify-between gap-3"><h3 className="m-0 min-w-0 break-words text-base font-semibold">{item.teamName}</h3><time className="invitation-muted shrink-0 pt-0.5 text-right text-[10px] leading-relaxed" dateTime={item.expiresAt}>Expires {new Date(item.expiresAt).toLocaleDateString()}</time></div>
       <p className="invitation-message invitation-muted mb-0 mt-1 break-words text-xs leading-relaxed">@{item.inviterUsername} invited you as a {roleName(item.proposedRole)}.</p>
-      <div className="invitation-actions grid grid-cols-2 gap-2"><button className="neutral-button" disabled={!!inbox.pendingId} aria-label={`Decline invitation to ${item.teamName}`} onClick={() => void inbox.respond(item, false)}>Decline</button><button className="neutral-button-filled" disabled={!!inbox.pendingId} aria-label={`Accept invitation to ${item.teamName}`} onClick={() => void inbox.respond(item, true).then((accepted) => { if (accepted) return onAccepted(); })}>{inbox.pendingId === item.invitationId ? 'Please wait…' : 'Accept'}</button></div>
+      <div className="invitation-actions grid grid-cols-2 gap-2"><button className="neutral-button" disabled={disabled || !!inbox.pendingId} aria-label={`Decline invitation to ${item.teamName}`} onClick={() => void inbox.respond(item, false)}>Decline</button><button className="neutral-button-filled" disabled={disabled || !!inbox.pendingId} aria-label={`Accept invitation to ${item.teamName}`} onClick={() => void inbox.respond(item, true).then((accepted) => { if (accepted) return onAccepted(item); })}>{inbox.pendingId === item.invitationId ? 'Please wait…' : 'Accept'}</button></div>
     </li>)}</ul>
     {inbox.items.length > inbox.visibleCount && <button type="button" className="neutral-button mt-4 w-full" onClick={inbox.loadMore}>Load more</button>}
   </div>;

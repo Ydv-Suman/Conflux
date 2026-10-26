@@ -44,6 +44,46 @@ pub struct LastWorkspace {
     workstream_id: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryMetadata {
+    remote_url: Option<String>,
+    branch: String,
+    revision: String,
+}
+
+#[tauri::command]
+pub fn repository_metadata(path: String) -> Result<RepositoryMetadata, String> {
+    let root = validate_repository(&path)?;
+    let branch = git(&root, &["branch", "--show-current"])?;
+    let revision = git(&root, &["rev-parse", "HEAD"])?;
+    let remotes = git(&root, &["remote"])?;
+    let names: Vec<&str> = remotes.lines().collect();
+    let upstream = git(&root, &["config", "--get", &format!("branch.{branch}.remote")]).ok();
+    let remote = upstream.as_deref().filter(|name| names.contains(name))
+        .or_else(|| names.iter().copied().find(|name| *name == "origin"))
+        .or_else(|| if names.len() == 1 { Some(names[0]) } else { None });
+    let remote_url = remote.and_then(|name| git(&root, &["remote", "get-url", "--", name]).ok())
+        .and_then(|url| shareable_remote_url(&url));
+    Ok(RepositoryMetadata { remote_url, branch, revision })
+}
+
+fn shareable_remote_url(raw: &str) -> Option<String> {
+    let normalized = if !raw.contains("://") {
+        let (host, path) = raw.split_once(':')?;
+        if !host.contains('@') { return None; }
+        format!("ssh://{host}/{path}")
+    } else { raw.to_owned() };
+    let mut url = tauri::Url::parse(&normalized).ok()?;
+    if !matches!(url.scheme(), "https" | "ssh") || url.host_str().is_none() { return None; }
+    // Repository config can contain personal tokens. Never send them to the form or service.
+    url.set_password(None).ok()?;
+    if url.scheme() == "https" { url.set_username("").ok()?; }
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.to_string())
+}
+
 #[tauri::command]
 pub fn inspect_repository(
     path: String,
@@ -89,12 +129,8 @@ pub fn create_worktree(
         params![project_id], |row| row.get(0),
     ).optional().map_err(database_error)?;
     let source = validate_repository(&source.ok_or_else(|| "Connect a local repository first.".to_string())?)?;
-    if !git(&source, &["status", "--porcelain"])?.is_empty() {
-        return Err("Commit or stash local changes before starting work.".into());
-    }
     validate_identifier(&project_id, "project")?;
     validate_identifier(&workstream_id, "workstream")?;
-    validate_worktree_revision(&source, &branch_name, &base_revision, create_branch)?;
 
     let root = app
         .path()
@@ -112,28 +148,7 @@ pub fn create_worktree(
     )
     .map_err(|_| "The worktree folder could not be created.".to_string())?;
     let destination = root.to_string_lossy().into_owned();
-    let result = if create_branch {
-        git(
-            &source,
-            &[
-                "worktree",
-                "add",
-                "-b",
-                &branch_name,
-                &destination,
-                &base_revision,
-            ],
-        )
-    } else {
-        git(&source, &["worktree", "add", &destination, &branch_name])
-    };
-    if let Err(error) = result {
-        return Err(if error.contains("already checked out") {
-            "That branch is already open in another worktree.".into()
-        } else {
-            error
-        });
-    }
+    add_worktree(&source, &destination, &branch_name, &base_revision, create_branch)?;
 
     if let Err(error) = connection.execute(
         "INSERT INTO repository_mappings (project_id, workstream_id, repository_path, last_opened_at) VALUES (?1, ?2, ?3, unixepoch()) ON CONFLICT(project_id, workstream_id) DO UPDATE SET repository_path=excluded.repository_path, last_opened_at=excluded.last_opened_at",
@@ -144,6 +159,34 @@ pub fn create_worktree(
         return Err(database_error(error));
     }
     inspect_repository_data(root, None, state)
+}
+
+// A separate worktree reads committed objects without changing the source worktree or index.
+fn add_worktree(source: &Path, destination: &str, branch_name: &str, base_revision: &str, create_branch: bool) -> Result<(), String> {
+    validate_worktree_revision(source, branch_name, base_revision, create_branch)?;
+    let result = if create_branch {
+        git(
+            source,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                branch_name,
+                destination,
+                base_revision,
+            ],
+        )
+    } else {
+        git(source, &["worktree", "add", destination, branch_name])
+    };
+    if let Err(error) = result {
+        return Err(if error.contains("already checked out") {
+            "That branch is already open in another worktree.".into()
+        } else {
+            error
+        });
+    }
+    Ok(())
 }
 
 fn validate_worktree_revision(source: &Path, branch: &str, revision: &str, create_branch: bool) -> Result<(), String> {
@@ -167,6 +210,60 @@ fn validate_worktree_revision(source: &Path, branch: &str, revision: &str, creat
 mod shared_workspace_tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn new_worktree_uses_commit_and_preserves_source_index_and_uncommitted_files() {
+        let root = std::env::temp_dir().join(format!("conflux-dirty-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        git(&source, &["init", "-b", "main"]).unwrap();
+        git(&source, &["config", "user.email", "test@example.com"]).unwrap();
+        git(&source, &["config", "user.name", "Test"]).unwrap();
+        fs::write(source.join("file.txt"), "committed").unwrap();
+        git(&source, &["add", "file.txt"]).unwrap();
+        git(&source, &["-c", "commit.gpgsign=false", "commit", "-m", "base"]).unwrap();
+        let revision = git(&source, &["rev-parse", "HEAD"]).unwrap();
+        fs::write(source.join("file.txt"), "staged").unwrap();
+        git(&source, &["add", "file.txt"]).unwrap();
+        fs::write(source.join("file.txt"), "unstaged").unwrap();
+        fs::write(source.join("untracked.txt"), "local only").unwrap();
+        let status = git(&source, &["status", "--porcelain"]).unwrap();
+        let destination = root.join("shared");
+        add_worktree(&source, destination.to_str().unwrap(), "conflux/team/test", &revision, true).unwrap();
+        git(&source, &["remote", "add", "origin", "https://user:secret@example.com/team/repo.git?token=private#secret"]).unwrap();
+        let metadata = repository_metadata(source.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(metadata.remote_url.as_deref(), Some("https://example.com/team/repo.git"));
+        assert_eq!(metadata.branch, "main");
+        assert_eq!(metadata.revision, revision);
+        assert!(destination.join(".git").is_file());
+        let linked = repository_metadata(destination.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(linked.remote_url, metadata.remote_url);
+        assert_eq!(linked.branch, "conflux/team/test");
+        assert_eq!(linked.revision, revision);
+        git(&source, &["remote", "add", "upstream", "git@example.com:other/repo.git"]).unwrap();
+        git(&source, &["config", "branch.main.remote", "upstream"]).unwrap();
+        assert_eq!(repository_metadata(source.to_string_lossy().into_owned()).unwrap().remote_url.as_deref(), Some("ssh://git@example.com/other/repo.git"));
+        assert_eq!(fs::read_to_string(destination.join("file.txt")).unwrap(), "committed");
+        assert!(!destination.join("untracked.txt").exists());
+        assert!(git(&destination, &["status", "--porcelain"]).unwrap().is_empty());
+        assert_eq!(git(&source, &["status", "--porcelain"]).unwrap(), status);
+        assert_eq!(git(&source, &["show", ":file.txt"]).unwrap(), "staged");
+        assert_eq!(fs::read_to_string(source.join("file.txt")).unwrap(), "unstaged");
+        assert_eq!(fs::read_to_string(source.join("untracked.txt")).unwrap(), "local only");
+        assert_eq!(git(&source, &["branch", "--show-current"]).unwrap(), "main");
+        assert_eq!(git(&source, &["rev-parse", "HEAD"]).unwrap(), revision);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detected_remote_never_exposes_embedded_credentials_or_local_paths() {
+        assert_eq!(shareable_remote_url("https://token@example.com/repo.git?key=secret"), Some("https://example.com/repo.git".into()));
+        assert_eq!(shareable_remote_url("ssh://git:secret@example.com:2222/repo.git"), Some("ssh://git@example.com:2222/repo.git".into()));
+        assert_eq!(shareable_remote_url("git@example.com:team/repo.git"), Some("ssh://git@example.com/team/repo.git".into()));
+        assert_eq!(shareable_remote_url("file:///tmp/repo"), None);
+        assert_eq!(shareable_remote_url("/tmp/repo"), None);
+        assert_eq!(shareable_remote_url("http://example.com/repo"), None);
+    }
 
     #[test]
     fn shared_branch_requires_the_exact_revision_without_changing_local_work() {

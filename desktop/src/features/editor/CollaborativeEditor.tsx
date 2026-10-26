@@ -17,7 +17,8 @@ export function CollaborativeEditor({
   filePath,
   initialContent,
   theme,
-  onClose,
+  active,
+  onDirtyChange,
   onSave,
 }: {
   projectId: string;
@@ -25,10 +26,14 @@ export function CollaborativeEditor({
   filePath: string;
   initialContent: string;
   theme: 'light' | 'dark';
-  onClose: () => void;
+  active: boolean;
+  onDirtyChange: (dirty: boolean) => void;
   onSave: (content: string) => Promise<void>;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const callbacks = useRef({ onSave, onDirtyChange });
+  callbacks.current = { onSave, onDirtyChange };
   const [connection, setConnection] = useState<ConnectionState>('connecting');
 
   useEffect(() => {
@@ -47,6 +52,10 @@ export function CollaborativeEditor({
       padding: { top: 16 },
       theme: theme === 'dark' ? 'vs-dark' : 'vs',
     });
+    editorRef.current = editor;
+    let savedContent = initialContent;
+    const reportDirty = () => callbacks.current.onDirtyChange(model.getValue() !== savedContent);
+    const contentListener = model.onDidChangeContent(reportDirty);
     const binding = new MonacoBinding(text, model, new Set([editor]));
     let hash = 2166136261;
     for (const character of filePath) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
@@ -55,8 +64,10 @@ export function CollaborativeEditor({
     const endpoint = `${COLLABORATION_WS_URL}/ws/projects/${encodeURIComponent(projectId)}/workstreams/${encodeURIComponent(workstreamId)}/documents/${documentId}`;
     const socket = new WebSocket(endpoint);
     socket.binaryType = 'arraybuffer';
+    let disposed = false;
     let seeded = false;
     const seedLocalContent = () => {
+      if (disposed) return;
       if (!seeded && text.length === 0 && initialContent) text.insert(0, initialContent);
       seeded = true;
     };
@@ -65,38 +76,46 @@ export function CollaborativeEditor({
       if (origin !== socket && socket.readyState === WebSocket.OPEN) socket.send(update);
     };
     doc.on('update', sendUpdate);
-    socket.addEventListener('open', () => setConnection('connected'));
-    socket.addEventListener('close', () => { seedLocalContent(); setConnection('disconnected'); });
-    socket.addEventListener('error', () => { seedLocalContent(); setConnection('disconnected'); });
+    socket.addEventListener('open', () => { if (!disposed) setConnection('connected'); });
+    socket.addEventListener('close', () => { if (!disposed) { seedLocalContent(); setConnection('disconnected'); } });
+    socket.addEventListener('error', () => { if (!disposed) { seedLocalContent(); setConnection('disconnected'); } });
     socket.addEventListener('message', (event) => {
-      if (!(event.data instanceof ArrayBuffer)) return;
+      if (disposed || !(event.data instanceof ArrayBuffer)) return;
       if (event.data.byteLength === 0) seedLocalContent();
       else Y.applyUpdate(doc, new Uint8Array(event.data), socket);
     });
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void onSave(text.toString()));
+    let saving = false;
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      if (saving) return;
+      saving = true;
+      const content = text.toString();
+      void callbacks.current.onSave(content).then(() => { savedContent = content; if (!disposed) reportDirty(); })
+        .catch(() => { /* The workspace displays the save error and keeps this tab dirty. */ })
+        .finally(() => { saving = false; });
+    });
 
     return () => {
+      disposed = true;
       doc.off('update', sendUpdate);
       socket.close();
+      contentListener.dispose();
+      editorRef.current = null;
       binding.destroy();
       editor.dispose();
       model.dispose();
       doc.destroy();
     };
-  }, [filePath, initialContent, onSave, projectId, workstreamId, theme]);
+  }, [filePath, initialContent, projectId, workstreamId]);
+
+  useEffect(() => { monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs'); }, [theme]);
+  useEffect(() => {
+    if (!active) return;
+    const frame = requestAnimationFrame(() => { editorRef.current?.layout(); editorRef.current?.focus(); });
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
 
   return <section className="collaborative-editor flex h-full min-h-0 flex-col overflow-hidden bg-[#fffefa]">
-    <header className="flex h-11 shrink-0 items-stretch justify-between border-b border-[#d8d6ce]">
-      <div className="editor-tabs flex min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Open files">
-        <div className="editor-tab flex shrink-0 items-center gap-3 border-r border-[#d8d6ce] px-4" role="tab" aria-selected="true">
-          <strong className="font-mono text-xs font-medium">{filePath.split('/').pop()}</strong>
-          <button className="editor-close" type="button" aria-label={`Close ${filePath}`} title={`Close ${filePath}`} onClick={onClose}>×</button>
-        </div>
-      </div>
-      <div className="grid shrink-0 place-items-center px-4">
-        <span className={`connection-dot connection-dot-${connection}`} role="status" aria-label={`Collaboration ${connection}`} title={`Collaboration ${connection}`} />
-      </div>
-    </header>
+    <span className="sr-only" role="status">Collaboration {connection}</span>
     <div className="min-h-0 flex-1" ref={container} />
   </section>;
 }

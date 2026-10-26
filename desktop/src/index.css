@@ -104,24 +104,19 @@
   .danger-button:focus-visible { outline: 2px solid #a54d45; outline-offset: 2px; }
   .danger-button:disabled { cursor: not-allowed; opacity: .58; }
   .danger-button-compact { min-height: 2rem; padding: 0 .7rem; font-size: .75rem; }
-  .connection-dot { width: .55rem; height: .55rem; border-radius: 999px; background: #8b6924; box-shadow: 0 0 0 3px rgba(139,105,36,.12); }
-  .connection-dot-connected { background: #3c9b5f; box-shadow: 0 0 0 3px rgba(60,155,95,.14); }
-  .connection-dot-disconnected { background: #cf5147; box-shadow: 0 0 0 3px rgba(207,81,71,.14); }
-  .editor-tabs { scrollbar-width: none; }
-  .editor-tabs::-webkit-scrollbar { display: none; }
-  .editor-tab { background: #fffefa; box-shadow: inset 0 -2px #66707c; }
-  .editor-close { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: .35rem; color: #6d716b; font-size: 1.25rem; line-height: 1; }
-  .editor-close:hover { background: #e3e1da; color: #1d211e; }
-  .editor-close:focus-visible { outline: 2px solid #66707c; outline-offset: 1px; }
   .explorer-folder, .explorer-file { display: flex; width: 100%; min-width: 0; align-items: center; gap: .45rem; border-radius: .35rem; padding: .4rem .5rem; font-size: .75rem; text-align: left; }
   .explorer-folder svg, .explorer-file svg { width: 1rem; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
   .explorer-file { padding-left: 2.25rem; color: #4f554f; }
   .explorer-file:hover, .explorer-file.is-active { background: #dedcd4; color: #1d211e; }
   .explorer-file:focus-visible { outline: 2px solid #66707c; outline-offset: 1px; }
-  .explorer-entry { display: flex; width: 100%; min-width: 0; align-items: center; gap: .4rem; border-radius: .3rem; padding: .32rem .4rem; color: #4f554f; font-size: .72rem; text-align: left; cursor: pointer; }
-  .explorer-entry:hover { background: #dedcd4; color: #1d211e; }
+  .repository-explorer { --explorer-text: #252b32; --explorer-hover: #dedcd4; --explorer-hover-text: #10151b; --explorer-icon: #596571; --explorer-border: #cac8bf; }
+  .explorer-project { border-bottom: 1px solid var(--explorer-border); color: var(--explorer-text); }
+  .explorer-nesting { border-left: 1px solid var(--explorer-border); }
+  .explorer-entry { display: flex; width: 100%; min-width: 0; align-items: center; gap: .4rem; border-radius: .3rem; min-height: 2rem; padding: .35rem .45rem; color: var(--explorer-text); font-size: .875rem; font-weight: 500; line-height: 1.5; text-align: left; cursor: pointer; }
+  .explorer-entry:hover { background: var(--explorer-hover); color: var(--explorer-hover-text); }
+  .explorer-entry span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .explorer-entry:focus-visible { outline: 2px solid #66707c; outline-offset: 1px; }
-  .explorer-entry svg { width: .9rem; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+  .explorer-entry svg { width: 1rem; height: 1rem; color: var(--explorer-icon); flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
   summary.explorer-entry { list-style: none; }
   summary.explorer-entry::-webkit-details-marker { display: none; }
   details > summary.explorer-entry::before { content: '›'; width: .45rem; font-size: .9rem; transition: transform 160ms; }
@@ -204,7 +199,7 @@ html[data-theme="dark"] .activity-panel .project-nav-heading { color: #c5cbd2 !i
 html[data-theme="dark"] .activity-panel .team-section-status { color: #cbd1d7; }
 html[data-theme="dark"] .editor-stage { border-color: #353a41 !important; background: #1d2024 !important; }
 html[data-theme="dark"] .collaborative-editor { border-color: #353a41 !important; background: #1d2024 !important; }
-html[data-theme="dark"] .editor-tab { border-color: #353a41 !important; background: #1d2024; box-shadow: inset 0 -2px #adb2ba; }
+html[data-theme="dark"] .repository-explorer { --explorer-text: #e7ebf0; --explorer-hover: #303740; --explorer-hover-text: #ffffff; --explorer-icon: #aab8c8; --explorer-border: #3a424d; }
 html[data-theme="dark"] .account-panel { border-color: #353a41 !important; box-shadow: 18px 0 48px rgba(0,0,0,.32) !important; }
 html[data-theme="dark"] #account-panel { box-shadow: 0 24px 70px rgba(0,0,0,.46) !important; }
 html[data-theme="dark"] .account-panel [class*="border-[#d8d6ce]"] { border-color: #3a3f46 !important; }
@@ -349,3 +344,30 @@ html[data-theme="dark"] .invitation-panel { --invitation-border: #454a52; --invi
   .invitation-card:hover .invitation-actions,
   .invitation-card:focus-within .invitation-actions { margin-top: .5rem; }
 }
+
+.file-tabs {
+  --tab-surface: #e9e7df;
+  --tab-active: #fffefa;
+  --tab-text: #424a54;
+  --tab-active-text: #17212d;
+  --tab-border: #cdcac1;
+  --tab-accent: #526d91;
+  --tab-hover: #deded9;
+  display: flex;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  background: var(--tab-surface);
+  border-bottom: 1px solid var(--tab-border);
+  scrollbar-width: thin;
+}
+.file-tab { display: flex; flex: 0 0 auto; align-items: center; min-height: 2.25rem; border-right: 1px solid var(--tab-border); border-top: 2px solid transparent; color: var(--tab-text); }
+.file-tab.is-active { border-top-color: var(--tab-accent); background: var(--tab-active); color: var(--tab-active-text); }
+.file-tab-select { display: flex; align-items: center; gap: .45rem; max-width: 17rem; padding: .4rem .5rem .4rem .75rem; color: inherit; font-size: .8125rem; font-weight: 500; white-space: nowrap; }
+.file-tab-select > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.file-tab-dirty { flex: 0 0 auto; font-size: .6rem; }
+.file-tab-close { display: grid; flex: 0 0 auto; place-items: center; width: 1.5rem; height: 1.5rem; margin-right: .5rem; border-radius: .25rem; color: inherit; font-size: 1.1rem; line-height: 1; }
+.file-tab-close:hover { background: var(--tab-hover); }
+.file-tab-select:focus-visible, .file-tab-close:focus-visible { outline: 2px solid var(--tab-accent); outline-offset: -2px; }
+html[data-theme="dark"] .file-tabs { --tab-surface: #17191c; --tab-active: #1d2024; --tab-text: #bdc5cf; --tab-active-text: #f2f5f8; --tab-border: #363d46; --tab-accent: #9cbce7; --tab-hover: #3a424d; }
