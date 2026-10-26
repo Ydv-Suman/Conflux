@@ -15,7 +15,7 @@ public interface EmailVerificationTokenRepository
         extends JpaRepository<EmailVerificationToken, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<EmailVerificationToken> findByTokenHashAndConsumedAtIsNull(String tokenHash);
+    Optional<EmailVerificationToken> findByTokenHash(String tokenHash);
 
     @Modifying
     @Query(value = "DELETE FROM email_verification_tokens WHERE user_email_id = :userEmailId", nativeQuery = true)
@@ -32,7 +32,7 @@ public interface EmailVerificationTokenRepository
     @Modifying
     @Query(value = """
             DELETE FROM email_verification_tokens
-            WHERE expires_at <= CURRENT_TIMESTAMP OR consumed_at IS NOT NULL
+            WHERE expires_at <= CURRENT_TIMESTAMP
             """, nativeQuery = true)
-    int deleteExpiredOrConsumed();
+    int deleteExpired();
 }

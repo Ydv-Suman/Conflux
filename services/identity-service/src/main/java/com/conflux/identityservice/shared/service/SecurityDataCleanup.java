@@ -32,7 +32,7 @@ public class SecurityDataCleanup {
     public void clean() {
         revokedJwts.deleteExpired();
         sessions.deleteExpiredOrRevoked();
-        verificationTokens.deleteExpiredOrConsumed();
+        verificationTokens.deleteExpired();
         rateLimits.deleteOlderThan(60 * 60);
     }
 }
