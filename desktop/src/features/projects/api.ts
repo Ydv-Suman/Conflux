@@ -25,7 +25,8 @@ export type WorkstreamStatus =
   | 'READY_TO_MERGE'
   | 'MERGED'
   | 'BLOCKED'
-  | 'CONFLICT';
+  | 'CONFLICT'
+  | 'ARCHIVED';
 
 export type Workstream = {
   workstreamId: string;
@@ -33,8 +34,10 @@ export type Workstream = {
   teamId: string;
   name: string;
   branchName: string;
-  baseRevision: string;
-  currentRevision: string;
+  baseRevision: string | null;
+  currentRevision: string | null;
+  defaultWorkstream: boolean;
+  repositoryReady: boolean;
   status: WorkstreamStatus;
   createdBy: string;
   createdAt: string;
@@ -87,7 +90,14 @@ export const listWorkstreams = (projectId: string, teamId: string) =>
     'GET',
   );
 
-export const createWorkstream = (
+export const getDefaultWorkstream = (projectId: string, teamId: string) =>
+  authenticatedServiceRequest<Workstream>(
+    WORKSPACE_API_URL,
+    `/api/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(teamId)}/workstreams/default`,
+    'GET',
+  );
+
+export const initializeDefaultRepository = (
   projectId: string,
   teamId: string,
   name: string,
@@ -95,7 +105,7 @@ export const createWorkstream = (
   baseRevision: string,
 ) => authenticatedServiceRequest<Workstream>(
   WORKSPACE_API_URL,
-  `/api/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(teamId)}/workstreams`,
-  'POST',
+  `/api/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(teamId)}/workstreams/default/repository`,
+  'PUT',
   { name, branchName, baseRevision },
 );

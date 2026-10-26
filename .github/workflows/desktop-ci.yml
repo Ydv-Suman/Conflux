@@ -45,7 +45,7 @@ jobs:
         run: npm run lint
         working-directory: desktop
 
-      - name: Test desktop invitations
+      - name: Test desktop
         run: npm test
         working-directory: desktop
 
