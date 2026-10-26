@@ -1,4 +1,5 @@
 mod repository;
+mod download;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -6,9 +7,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(repository::RepositoryState::default())
         .invoke_handler(tauri::generate_handler![
+            download::download_repository,
             repository::connect_repository,
             repository::create_worktree,
             repository::inspect_repository,
+            repository::repository_metadata,
             repository::restore_repository,
             repository::read_repository_file,
             repository::write_repository_file,

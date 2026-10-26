@@ -61,13 +61,25 @@ reveals another 10 when available, up to the 100 returned by the backend.
 Requires Workspace Service migration V6 and its default-workstream APIs. Selecting
 an assigned team automatically opens the same default workstream for every member;
 restarting the desktop restores that team's default rather than a previously selected
-feature stream. **Team details** keeps member, invitation, and project controls
-accessible, along with previous workstreams retained by the migration.
+feature stream. Selecting the current team again under **Projects** opens its member, invitation,
+and project controls, along with previous workstreams retained by the migration.
+The editor has a horizontal file-tab bar without the workspace/branch header.
+Opening files in Explorer adds tabs; clicking a tab switches files without losing
+editor contents, undo history, cursor position, or the collaboration connection.
+Tabs show unsaved indicators and confirm before closing unsaved content. Save uses
+Cmd+S / Ctrl+S for the active file. Arrow keys and Home/End navigate the tab bar.
+Explorer stays open when opening files and shows the project name instead of
+internal worktree identifiers, with readable file names in both themes.
+Open tabs are scoped to the current workspace; only the last active file is
+restored after restarting the app.
 
 A member with `CREATE_WORKSTREAM` permission selects a local Git repository and
 chooses **Set up shared workspace**. The desktop initializes the existing default
-using its planned branch and the repository's actual HEAD commit. Setup is blocked
-for a dirty source or an existing shared branch that is not checked out. Concurrent
+using its planned branch and the repository's actual HEAD commit. When the source has uncommitted changes on another branch, **Set up from last commit**
+creates a separate worktree from HEAD; staged, unstaged, and untracked changes stay
+in the source folder and are not included. Initial setup is still blocked when the
+source is already on the shared branch with uncommitted changes, or when an existing
+shared branch is not checked out. Concurrent
 setup resolves to the server's initialized default. Other members see a waiting
 screen that checks for completed setup every 15 seconds and on window focus.
 
@@ -78,8 +90,50 @@ be used directly. Local branch/revision mismatches stop the editor and show a
 recoverable error; Conflux never resets local work. Existing dirty shared folders
 can reopen when their branch and HEAD still match.
 
-Each device still needs its own local clone with the shared commit available.
-Automatic clone/download, publishing Git revisions, and per-task contribution
-attribution are separate work. These controls use the existing light/dark theme
+Each device uses its own local clone with the shared commit available. It can now download that clone from the configured remote.
+Publishing Git revisions and per-task contribution attribution are separate work. These controls use the existing light/dark theme
 styles. Run `npm test`, `npm run build`, `npm run lint`, and
 `cargo test --manifest-path src-tauri/Cargo.toml` to validate this integration.
+
+## Downloading an invited project
+
+After accepting an invitation, a dialog lists the projects assigned to that team.
+Choose **Download project**, then select a parent folder. The native desktop creates
+`conflux-<projectId>` inside that folder, checks the published canonical commit,
+checks out the team's shared branch at its current revision, and opens Explorer.
+The destination must be new: existing folders and work are never overwritten.
+Canceling the picker keeps the invitation accepted and the existing editor open.
+The same download action is available in the team's workspace when it has no local
+copy, so it can be used after dismissing the invitation dialog or restarting.
+
+A project creator or manager configures **Repository settings** from the project
+page or shared-workspace setup screen. These controls require Workspace Service
+migration V7. For a connected repository, an unconfigured form detects the remote URL, current
+branch, and full HEAD commit through Git, including linked worktrees with a `.git`
+file. It prefers the tracking remote, then `origin`, then a sole remote. Saved
+server settings take precedence. Embedded URL credentials and query parameters are
+stripped before reaching the UI. SSH suggests SSH-agent access; HTTPS suggests a
+credential helper because local metadata cannot establish public visibility. All
+fields remain editable. Confirm that the detected branch and commit are published. Concurrent settings edits require reloading before saving again.
+The repository and all required shared commits must already be published to that
+remote; Conflux does not upload the inviter's local or uncommitted files.
+
+Public HTTPS downloads use no Git credential helper. Private HTTPS uses each
+member's configured Git credential helper; SSH uses their agent and an already
+trusted host. Interactive terminal credential prompts are disabled. Provider
+permissions remain separate from Conflux team membership. Clone errors give retry
+instructions without displaying credential-helper output. Git runs off the UI
+thread with a three-minute timeout per operation. Failed downloads remove only the
+newly created destination; existing folders are preserved. Submodules are not
+recursively downloaded.
+
+When the shared workspace is uninitialized, members with setup permission can
+**Download and set up workspace**. Developers may download the canonical snapshot
+but must wait for an authorized member to initialize the shared workspace. Access
+and shared-workstream state are rechecked after downloading. Missing/unpublished
+commits stop opening the editor; they are never silently replaced with remote HEAD.
+Browser users see instructions to open the native desktop app for local downloads.
+
+Verification includes mocked invitation/download flows and real local Git clone,
+checkout, revision validation, and existing-file preservation tests. External
+private-provider authentication requires a manual test with configured credentials.

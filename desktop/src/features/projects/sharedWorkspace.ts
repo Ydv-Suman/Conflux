@@ -43,7 +43,9 @@ export function openSharedRepository(stream: Workstream, selectedSource?: Reposi
 }
 
 export async function initializeSharedWorkspace(stream: Workstream, repository: RepositoryInfo) {
-  if (repository.modified) throw new Error('Commit or stash local changes before setting up the shared workspace.');
+  if (repository.modified && repository.branch === stream.branchName) {
+    throw new Error('This folder already uses the shared branch. Commit or stash its changes before initial setup.');
+  }
   if (repository.branches.includes(stream.branchName) && repository.branch !== stream.branchName) {
     throw new Error(`Open ${stream.branchName} locally before using it to set up the shared workspace.`);
   }

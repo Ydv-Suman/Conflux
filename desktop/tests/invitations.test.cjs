@@ -85,7 +85,7 @@ test('access refresh happens only after successful acceptance', async () => {
     const responses = [];
     const element = InvitationInbox({
       inbox: inbox({ respond: async (item, accept) => { responses.push([item.invitationId, accept]); return accepted; } }),
-      onAccepted: async () => { refreshed++; },
+      onAccepted: async (received) => { assert.equal(received, invitation); refreshed++; },
     });
     button(element, 'Accept invitation to <Payments>').props.onClick();
     await new Promise(setImmediate);

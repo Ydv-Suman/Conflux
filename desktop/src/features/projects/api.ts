@@ -109,3 +109,27 @@ export const initializeDefaultRepository = (
   'PUT',
   { name, branchName, baseRevision },
 );
+
+export type RepositoryAccessMode = 'PUBLIC' | 'HTTPS_CREDENTIAL_HELPER' | 'SSH_AGENT';
+export type ProjectRepository = {
+  projectId: string;
+  repositoryUrl: string;
+  accessMode: RepositoryAccessMode;
+  canonicalBranch: string;
+  canonicalRevision: string;
+  version: number;
+};
+export const getProjectRepository = async (projectId: string): Promise<ProjectRepository | null> =>
+  (await authenticatedServiceRequest<ProjectRepository | undefined>(WORKSPACE_API_URL,
+    `/api/projects/${encodeURIComponent(projectId)}/repository`, 'GET')) ?? null;
+
+export const updateProjectRepository = (projectId: string, configuration: Omit<ProjectRepository, 'projectId' | 'version'>, expectedVersion: number) =>
+  authenticatedServiceRequest<ProjectRepository>(WORKSPACE_API_URL,
+    `/api/projects/${encodeURIComponent(projectId)}/repository`, 'PUT', { ...configuration, expectedVersion });
+
+export const listTeamProjects = async (teamId: string) => {
+  const projects = await listProjects();
+  const matches = await Promise.all(projects.map(async (project) =>
+    (await listProjectTeams(project.projectId)).some((team) => team.teamId === teamId) ? project : null));
+  return matches.filter((project): project is Project => project !== null);
+};

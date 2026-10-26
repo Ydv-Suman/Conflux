@@ -138,8 +138,8 @@ test('setup does not hide permission failures or branch conflicts', async () => 
   await assert.rejects(initializeSharedWorkspace(pending, source), /Branch taken/);
 });
 
-test('dirty source and existing non-current branch cannot publish initialization', async () => {
-  await assert.rejects(initializeSharedWorkspace(pending, { ...source, modified: true }), /Commit or stash/);
+test('dirty shared branch and existing non-current branch cannot publish initialization', async () => {
+  await assert.rejects(initializeSharedWorkspace(pending, { ...local, modified: true }), /Commit or stash/);
   await assert.rejects(initializeSharedWorkspace(pending, { ...source, branches: [stream.branchName] }), /Open conflux/);
   assert.deepEqual(calls, []);
 });
@@ -165,4 +165,22 @@ test('local failure UI offers retry and never offers Explorer for a rejected rep
   assert.ok(html.includes('Wrong branch &lt;main&gt;'));
   assert.ok(html.includes('Retry</button>'));
   assert.ok(!html.includes('Open Explorer</button>'));
+});
+
+
+test('a dirty source on another branch initializes from its last commit', async () => {
+  await initializeSharedWorkspace(pending, { ...source, modified: true });
+  assert.equal(calls[0][2], 'PUT');
+  assert.equal(calls[0][3].baseRevision, source.revision);
+  assert.equal(calls[0][3].branchName, pending.branchName);
+});
+
+test('dirty source setup is enabled with an explicit committed-files explanation', () => {
+  const html = render({ canInitialize: true, repository: { ...source, modified: true } });
+  assert.ok(html.includes('Set up from last commit</button>'));
+  assert.ok(html.includes('uncommitted changes stay in this folder and will not be included'));
+  assert.ok(!html.includes('disabled'));
+  const blocked = render({ canInitialize: true, repository: { ...local, modified: true } });
+  assert.ok(blocked.includes('disabled'));
+  assert.ok(blocked.includes('Commit or stash'));
 });
