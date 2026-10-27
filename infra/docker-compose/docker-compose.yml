@@ -76,3 +76,23 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_started
+
+  collaboration-service:
+    build:
+      context: ../../services/collaboration-service
+    environment:
+      IDENTITY_API_URL: http://identity-service:8080
+      WORKSPACE_API_URL: http://workspace-service:9000
+      COLLABORATION_DATA_DIR: /app/documents
+    ports:
+      - "8090:8090"
+    volumes:
+      - collaboration-data:/app/documents
+    depends_on:
+      identity-service:
+        condition: service_started
+      workspace-service:
+        condition: service_started
+
+volumes:
+  collaboration-data:

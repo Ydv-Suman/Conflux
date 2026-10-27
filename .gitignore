@@ -1,7 +1,11 @@
 /docs/TODO.md
 /docs/Conflux_architecture.pdf
+/docs/demo/
+/docs/.DS_Store
+.DS_Store
 .conflux/
 services/.idea/
 secrets/
 .env
 infra/docker-compose/.env
+.ideas/
