@@ -65,3 +65,30 @@ test('tab bar shows file names, full-path tooltips, close actions, and accessibl
   assert.ok(html.includes('aria-label="Close src/index.html"'));
   assert.ok(html.includes('aria-controls="file-panel-src%2Findex.html"'));
 });
+
+test('connection indicator follows the active file and ignores background file status', () => {
+  let tabs = { files: [a, b], activePath: a.path };
+  tabs = reduce(tabs, { type: 'connection', path: a.path, phase: 'connected' });
+  tabs = reduce(tabs, { type: 'connection', path: b.path, phase: 'reconnecting' });
+  const render = (state) => renderToStaticMarkup(React.createElement(FileTabs, {
+    files: state.files, activePath: state.activePath, onSelect() {}, onClose() {},
+  }));
+  const online = render(tabs);
+  assert.ok(online.includes('editor-connection is-connected'));
+  assert.ok(online.includes('Connected</span>'));
+  assert.ok(!online.includes('Live collaboration'));
+  assert.equal((online.match(/role="tab"/g) || []).length, 2);
+  const offline = render(reduce(tabs, { type: 'select', path: b.path }));
+  assert.ok(offline.includes('editor-connection is-disconnected'));
+  assert.ok(offline.includes('Disconnected</span>'));
+  assert.ok(offline.includes('editor-connection-dot'));
+});
+
+test('connection updates preserve editor content and dirty state without redundant changes', () => {
+  const tabs = { files: [{ ...a, dirty: true }], activePath: a.path };
+  const connected = reduce(tabs, { type: 'connection', path: a.path, phase: 'connected' });
+  assert.equal(connected.files[0].content, a.content);
+  assert.equal(connected.files[0].dirty, true);
+  assert.equal(reduce(connected, { type: 'connection', path: a.path, phase: 'connected' }), connected);
+  assert.equal(reduce(connected, { type: 'connection', path: 'closed', phase: 'connected' }), connected);
+});
