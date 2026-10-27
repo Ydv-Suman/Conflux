@@ -94,6 +94,14 @@ export const logout = async () => {
 export const getCurrentUser = () => currentUser;
 export const isAuthenticated = () => accessToken !== null;
 
+export const getCollaborationToken = async (rejectedToken?: string): Promise<string> => {
+  // Another tab may already have refreshed the token rejected by this connection.
+  if ((!accessToken || accessToken === rejectedToken) && !(await restoreSession())) {
+    throw new ApiError('Your session has expired. Please log in again.', 401, null);
+  }
+  return accessToken!;
+};
+
 export const authenticatedPost = async <T = void>(path: string, body?: object) => {
   if (!accessToken && !(await restoreSession())) {
     throw new ApiError('Your session has expired. Please log in again.', 401, null);

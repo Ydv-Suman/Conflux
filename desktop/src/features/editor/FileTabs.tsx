@@ -8,10 +8,11 @@ export function FileTabs({ files, activePath, onSelect, onClose }: {
   files: EditorFile[]; activePath: string | null; onSelect: (path: string) => void; onClose: (file: EditorFile) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
+  const connected = files.find((file) => file.path === activePath)?.connectionPhase === 'connected';
   useEffect(() => {
     bar.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activePath]);
-  return <div className="file-tabs" role="tablist" aria-label="Open files" ref={bar}>
+  return <div className="editor-tab-bar"><div className="file-tabs" role="tablist" aria-label="Open files" ref={bar}>
     {files.map((file, index) => <div className={`file-tab ${file.path === activePath ? 'is-active' : ''}`} role="presentation" key={file.path}>
       <button className="file-tab-select" type="button" role="tab" id={fileTabId(file.path)} aria-controls={filePanelId(file.path)} aria-selected={file.path === activePath} tabIndex={file.path === activePath ? 0 : -1} title={file.path} onClick={() => onSelect(file.path)} onKeyDown={(event) => {
         let next = index;
@@ -25,5 +26,10 @@ export function FileTabs({ files, activePath, onSelect, onClose }: {
       }}><span>{file.path.split('/').pop()}</span>{file.dirty && <span className="file-tab-dirty" aria-label="Unsaved changes">●</span>}</button>
       <button className="file-tab-close" type="button" aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
     </div>)}
+  </div>
+    <span className={`editor-connection ${connected ? 'is-connected' : 'is-disconnected'}`} role="status" title="Collaboration connection for the active file">
+      <span className="editor-connection-dot" aria-hidden="true" />
+      {connected ? 'Connected' : 'Disconnected'}
+    </span>
   </div>;
 }

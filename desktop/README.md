@@ -34,7 +34,7 @@ npm start         # Run the Tauri app
 npm run dev       # Run the Vite frontend
 npm run build     # Type-check and build the frontend
 npm run lint      # Lint TypeScript
-npm test          # Invitation and shared-workspace checks
+npm test          # Desktop and collaboration protocol checks
 npm run package   # Build the native executable
 ```
 
@@ -137,3 +137,58 @@ Browser users see instructions to open the native desktop app for local download
 Verification includes mocked invitation/download flows and real local Git clone,
 checkout, revision validation, and existing-file preservation tests. External
 private-provider authentication requires a manual test with configured credentials.
+
+## Secured collaborative editing
+
+Requires the authenticated Collaboration Service protocol described in
+`services/collaboration-service/README.md`. The desktop sends the team ID and
+in-memory access token as the first WebSocket text message. Tokens are never placed
+in WebSocket URLs or local storage. Expired tokens are refreshed once per failed
+connection; tabs reuse a token that another tab has already refreshed.
+
+Only the participant selected by the server initializes a new file from disk.
+Existing documents replay their persisted Yjs history, including intentionally
+empty documents. Editing and local saves stay disabled until the first replay
+completes, so an empty loading editor cannot overwrite a local file.
+
+The right side of the file-tab bar shows a green Connected dot or red Disconnected dot for the active file in both themes. After the first synchronization,
+disconnected editing remains available. The same Y.Doc stays alive across bounded
+reconnect retries, merges replayed updates, and sends its retained state back to
+the server. **Save locally** saves the current text to this device; it does not
+publish a Git commit. **Retry** reconnects without recreating the document.
+Membership denial stops automatic retries and makes the editor read-only while
+preserving its contents for a local save.
+
+Unsaved or offline pending edits keep the tab's dirty indicator active. Closing a
+changed tab or switching workspaces asks before discarding it. Keep the workspace
+open until reconnection completes: offline CRDT state is held in memory, not stored
+across app crashes or restarts. A local text save is a backup, not an offline CRDT
+journal. The server has no per-edit acknowledgement; “Connected” means the
+session synchronized, not that every subsequent edit has a persistence receipt.
+
+`npm test` covers actual Yjs convergence with a deterministic relay fixture, concurrent
+first opens, empty-document replay, offline edits, token refresh, access denial,
+backpressure, disposal, and size limits. To test the production desktop transport
+against the actual Java relay, first package Collaboration Service with
+`./mvnw package` in its service directory, then run `npm run test:collaboration`
+here. This starts temporary Identity/Workspace HTTP fixtures and a real Java relay,
+connects two Yjs clients, restarts the relay to check durable recovery, and verifies
+contributor records and membership revocation. Set `COLLABORATION_JAR` to use another
+packaged relay. This check does not log in through the native desktop UI.
+
+## Fonts
+
+Choose **Fonts** in Settings for four controls: **File font size**, **File font
+family**, **Editor font size**, and **Editor font family**. Size inputs accept
+10–24 px for file names and 10–32 px for editor text. File preferences apply to
+Explorer entries and file tabs; editor preferences update open editors without
+recreating documents or collaboration connections.
+
+File families: System default, Arial, Helvetica, Verdana, Georgia, Times New Roman.
+Editor families: JetBrains Mono, Fira Code, Consolas, Menlo, Cascadia Code, Source
+Code Pro. The four open-source editor fonts are bundled for offline use; Menlo,
+Consolas, and file fonts use locally installed fonts with fallbacks. Source and
+license details are in `src/assets/fonts/README.md`. Preferences save on this
+device, and existing size preferences are retained. **Reset** restores 14 px,
+System default for files, and Menlo for the editor. Close with **Done**, Escape,
+or the close button.

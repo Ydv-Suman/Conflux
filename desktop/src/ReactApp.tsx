@@ -50,6 +50,7 @@ import { RepositorySettings } from './features/projects/RepositorySettings';
 import { downloadSharedProject } from './features/projects/projectDownload';
 import { SharedWorkspaceSetup } from './features/projects/SharedWorkspaceSetup';
 import { EditorWorkspace } from './features/editor/EditorWorkspace';
+import { FontSettings, readFontPreferences, saveFontPreferences, FILE_FONT_FAMILIES, EDITOR_FONT_FAMILIES, fontFamilyCss } from './features/editor/FontSettings';
 import { RepositoryExplorer } from './features/repository/RepositoryExplorer';
 import { InvitationInbox, PendingTeamInvitations, useInvitationInbox } from './features/invitations/Invitations';
 import {
@@ -71,6 +72,7 @@ type Notice = { message: string; kind?: 'error' | 'success' } | null;
 type Dialog =
   | { kind: 'project'; project?: Project }
   | { kind: 'repository-settings'; project: Project }
+  | { kind: 'fonts' }
   | { kind: 'joined-team'; invitation: TeamInvitation }
   | { kind: 'team'; team?: Team; projectId?: string }
   | { kind: 'assign-team'; project: Project; teams: Team[] }
@@ -196,8 +198,26 @@ function EmailStatus({ verify }: { verify: boolean }) {
   return <div className="auth-page grid min-h-dvh grid-rows-[auto_1fr_auto] bg-[#efede6] p-[clamp(26px,5vw,52px)]"><img className="mx-auto size-16 object-cover" src={logoUrl} alt="Conflux" /><section className="w-full max-w-[480px] place-self-center border border-[#d2d0c7] bg-[#faf9f4] p-[clamp(34px,7vw,60px)] text-center shadow-[0_24px_70px_-52px_rgba(27,35,30,.5)]"><span className={`mx-auto mb-6 grid size-[72px] place-items-center rounded-full ${failed ? 'bg-[#f3e5e2] text-[#8a3f39]' : 'bg-[#e8e9e7] text-[#414851]'}`} aria-hidden="true"><svg className="size-8 fill-none stroke-current stroke-[1.7] [stroke-linecap:round] [stroke-linejoin:round]" viewBox="0 0 24 24">{failed ? <><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/></> : complete ? <path d="m5 12 4 4L19 6"/> : <><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></>}</svg></span><p className="mb-3 font-mono text-[10px] font-bold tracking-[.12em] text-[#59616c]">EMAIL VERIFICATION</p><h1 className="m-0 text-[clamp(30px,4vw,43px)] leading-none font-bold tracking-[-.045em]">{verify ? complete ? 'Email verified' : failed ? 'Link unavailable' : 'Verifying your email' : 'Check your inbox'}</h1><p className="mx-auto mb-7 mt-4 max-w-[37ch] text-sm leading-relaxed text-[#6d716b]">{notice?.message}</p>{!verify ? <form className="grid gap-4 text-left" onSubmit={resend}><label className={fieldClass}>Email<input className={inputClass} name="email" type="email" autoComplete="email" defaultValue={sessionStorage.getItem('verificationEmail') || ''} required /></label><button className="neutral-button" disabled={busy} type="submit">{busy ? 'Please wait…' : 'Resend email'}</button><button className="text-center text-sm font-semibold text-[#414851] underline underline-offset-3" type="button" onClick={() => navigate('/')}>Continue to login</button></form> : <button className={complete ? `${primaryClass} w-full` : 'neutral-button w-full'} onClick={() => navigate(complete ? '/' : '/check-email')}>{complete ? 'Continue to login →' : 'Request a new link'}</button>}</section></div>;
 }
 
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal-surface max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] shadow-[0_24px_70px_rgba(39,44,40,.24)]"><header className="flex items-center justify-between border-b border-[#d8d6ce] px-7 py-6"><h2 className="m-0 text-3xl font-bold tracking-[-.04em]">{title}</h2><button className="panel-close" type="button" onClick={onClose}>×</button></header><div className="p-7">{children}</div></section></div>;
+function Modal({ title, children, onClose, compact = false }: { title: string; children: ReactNode; onClose: () => void; compact?: boolean }) {
+  const surface = useRef<HTMLElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const element = surface.current;
+    (element?.querySelector<HTMLElement>('input, button, select, textarea') ?? element)?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key !== 'Tab' || !element) return;
+      const controls = [...element.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]')];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    element?.addEventListener('keydown', handleKey);
+    return () => { element?.removeEventListener('keydown', handleKey); previous?.focus(); };
+  }, []);
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-[#111]/45 p-5" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={surface} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className={`modal-surface ${compact ? 'modal-compact' : ''} max-h-[calc(100dvh-2rem)] w-[min(560px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] shadow-[0_24px_70px_rgba(39,44,40,.24)]`}><header className="flex items-center justify-between border-b border-[#d8d6ce] px-7 py-6"><h2 className="m-0 text-3xl font-bold tracking-[-.04em]">{title}</h2><button className="panel-close" type="button" aria-label={`Close ${title}`} onClick={onClose}>×</button></header><div className="p-7">{children}</div></section></div>;
 }
 
 function EntityForm({ initial, labels, busy, notice, onSubmit }: { initial?: { name: string; description: string | null }; labels: { name: string; submit: string }; busy: boolean; notice: Notice; onSubmit: (name: string, description: string) => void }) {
@@ -245,10 +265,20 @@ function Workspace() {
   const [downloading, setDownloading] = useState(false);
   const downloadLock = useRef(false);
   const loadVersion = useRef(0);
+  const pendingWorkspace = useRef(false);
+  const canLeaveWorkspace = useCallback(() => !pendingWorkspace.current || window.confirm(
+    'Leave this workspace? Unsaved or unsynchronized changes in open tabs may be lost. Save locally or reconnect first to keep them.',
+  ), []);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [panel, setPanel] = useState<'explorer' | 'projects' | 'profile' | 'settings' | 'invitations' | null>('projects');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+  const [fontPreferences, setFontPreferences] = useState(readFontPreferences);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--file-name-font-size', `${fontPreferences.fileNames}px`);
+    document.documentElement.style.setProperty('--file-name-font-family', fontFamilyCss(FILE_FONT_FAMILIES, fontPreferences.fileFamily));
+    saveFontPreferences(fontPreferences);
+  }, [fontPreferences]);
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = Number(localStorage.getItem('activityPanelWidth'));
     return saved >= 240 && saved <= 520 ? saved : 300;
@@ -261,6 +291,7 @@ function Workspace() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (projectId?: string | null, teamId?: string | null, openShared = true) => {
+    if (!canLeaveWorkspace()) return;
     const version = ++loadVersion.current;
     setLoading(true); setNotice(null); setOpenFile(null); setRepository(null); setActiveWorkstream(null);
     try {
@@ -276,7 +307,7 @@ function Workspace() {
       if (shared && openShared) setPanel('explorer');
     } catch (error) { if (version === loadVersion.current) setNotice({ message: messageFor(error, 'Unable to load projects.') }); }
     finally { if (version === loadVersion.current) setLoading(false); }
-  }, []);
+  }, [canLeaveWorkspace]);
   useEffect(() => {
     if (!isDesktop()) { void load(); return; }
     void loadLastWorkspace().then((saved) => {
@@ -346,7 +377,7 @@ function Workspace() {
   }, [project?.projectId, loading, repositoryAttempt]);
 
   const downloadProject = async (target: Project, targetTeamId: string) => {
-    if (downloadLock.current || busy || repositoryLoading) return;
+    if (downloadLock.current || busy || repositoryLoading || !canLeaveWorkspace()) return;
     downloadLock.current = true; setBusy(true); setDownloading(true); setRequestError(null);
     try {
       const result = await downloadSharedProject(target.projectId, targetTeamId, () => setOpenFile(null));
@@ -389,7 +420,7 @@ function Workspace() {
     try { await logout(); } catch { /* The deleted account no longer needs a server logout. */ }
     navigate('/');
   };
-  const askToLogOut = () => setConfirmation({ title: 'Log out?', message: 'Are you sure you want to log out of Conflux on this device?', label: 'Continue', action: signOut });
+  const askToLogOut = () => setConfirmation({ title: 'Log out?', message: pendingWorkspace.current ? 'Logging out will close your open documents. Unsaved or unsynchronized edits may be lost. Save locally or reconnect first to keep them.' : 'Are you sure you want to log out of Conflux on this device?', label: 'Continue', action: signOut });
   const askToDeleteAccount = () => setConfirmation({ title: 'Delete account?', message: 'Are you sure you want to permanently delete your account? This cannot be undone.', label: 'Continue', action: deleteAccount });
   const toggleTheme = () => { const nextTheme = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nextTheme; localStorage.setItem('theme', nextTheme); setTheme(nextTheme); };
   const resizePanel = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -402,6 +433,7 @@ function Workspace() {
     document.addEventListener('pointermove', resize); document.addEventListener('pointerup', stop);
   };
   const chooseRepository = async () => {
+    if (!canLeaveWorkspace()) return;
     if (busy || repositoryLoading) return;
     if (!isDesktop()) { setRequestError({ title: 'Desktop app required', message: 'Local folder access is available in the Conflux desktop app. Run npm start to test it.' }); return; }
     setBusy(true); setOpenFile(null);
@@ -442,7 +474,7 @@ function Workspace() {
     } catch (error) { setRepositoryError(messageFor(error, 'Unable to set up the shared workspace.')); }
     finally { setBusy(false); }
   };
-  const openWorkstream = (stream: Workstream) => { setActiveWorkstream(stream); setOpenFile(null); setRepository(null); setPanel('explorer'); };
+  const openWorkstream = (stream: Workstream) => { if (!canLeaveWorkspace()) return; setActiveWorkstream(stream); setOpenFile(null); setRepository(null); setPanel('explorer'); };
   const sharedWorkstream = workstreams.find((stream) => stream.defaultWorkstream);
 
   const projectNavigation = <nav className="team-sidebar bg-[#efede6] p-4" aria-label="Projects">
@@ -451,7 +483,7 @@ function Workspace() {
   </nav>;
 
   const workspaceContent = loading ? <p className="p-7" role="status">Loading team workspace…</p> : activeWorkstream && project ? <div className="flex h-full flex-col">
-    <div className="min-h-0 flex-1">{openFile && repository && !repositoryError && isRepositoryReady(activeWorkstream) ? <EditorWorkspace key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} file={openFile} theme={theme} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
+    <div className="min-h-0 flex-1">{openFile && repository && !repositoryError && isRepositoryReady(activeWorkstream) ? <EditorWorkspace key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} teamId={activeWorkstream.teamId} file={openFile} theme={theme} fontSize={fontPreferences.editor} fontFamily={fontFamilyCss(EDITOR_FONT_FAMILIES, fontPreferences.editorFamily)} onDirtyStateChange={(dirty) => { pendingWorkspace.current = dirty; }} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
   </div> : !project ? <section className="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center"><div><h1 className="m-0 text-3xl font-bold tracking-[-.04em]">Welcome to Conflux</h1><p className="mb-0 mt-2 text-sm text-[#6d716b]">Choose a project to view its teams.</p></div></section> : <section className="team-content min-h-[420px] min-w-0 overflow-hidden bg-[#f8f7f2]">
     <header className="border-b border-[#d8d6ce] px-6 py-6"><div className="flex items-start justify-between gap-5"><div className="flex min-w-0 items-start gap-3">{team && <button className="panel-action team-back-button mt-0.5 shrink-0 rounded-xl" type="button" aria-label="Back to project" title="Back to project" disabled={busy || repositoryLoading || loading} onClick={() => void load(project.projectId, null)}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg></button>}<div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><h1 className="m-0 truncate text-3xl font-bold tracking-[-.04em]">{team?.name || project.name}</h1>{team && identityTeam && can('MANAGE_TEAM') && <button className="inline-edit shrink-0 rounded-lg" type="button" aria-label="Edit team" title="Edit team" onClick={() => setDialog({ kind: 'team', team: identityTeam })}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16-.75 4.75L8 20l11-11-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg></button>}</div><p className="mb-0 mt-2 max-w-[70ch] text-sm leading-relaxed text-[#6d716b]">{team?.description || project.description || 'No description added.'}</p></div></div>{!team && canManageProject ? <button className="neutral-button shrink-0" type="button" onClick={() => setDialog({ kind: 'project', project })}>Edit project</button> : team && canManageProject ? <button className="danger-button danger-button-compact shrink-0" type="button" onClick={() => confirm(`Remove ${team.name} from ${project.name}?`) && void execute(() => removeProjectTeam(project.projectId, team.teamId), project.projectId, null)}>Remove team</button> : null}</div></header>
     {canManageProject && <div className="px-6 pt-4"><button className="neutral-button" type="button" disabled={busy} onClick={() => setDialog({ kind: 'repository-settings', project })}>Repository settings</button></div>}
@@ -465,12 +497,13 @@ function Workspace() {
       {panel === 'projects' && projectNavigation}
       {panel === 'invitations' && <InvitationInbox disabled={busy || repositoryLoading} inbox={invitationInbox} onAccepted={refreshMemberships} />}
       {panel === 'profile' && <div className="grid gap-5 px-5 pb-5 pt-5">{profile ? <><header className="flex items-center justify-between"><h2 className="m-0 text-lg font-semibold tracking-[-.02em]">Profile</h2><button className="panel-close" type="button" onClick={() => setPanel(null)}>×</button></header><section className="rounded-xl bg-[#e8e6df] p-4"><div className="flex items-center gap-3.5"><div className="grid size-14 shrink-0 place-items-center rounded-full bg-[#4b535d] text-xl font-bold text-white">{profile.username.charAt(0).toUpperCase()}</div><div className="min-w-0"><strong className="block truncate text-base font-semibold">{profile.firstName} {profile.middleName} {profile.lastName}</strong><span className="mt-0.5 block truncate text-sm text-[#6d716b]">@{profile.username}</span></div></div><p className="mb-0 mt-4 break-all text-sm text-[#59616c]">{profile.email}</p></section><button className="neutral-button w-full" type="button" onClick={() => setDialog({ kind: 'profile', profile })}>Edit profile</button><button className="danger-button w-full" type="button" onClick={askToLogOut}>Log out</button><section className="rounded-xl bg-[#f8eae7] p-4"><h3 className="m-0 text-sm font-semibold text-[#7f342e]">Delete account</h3><p className="mb-4 mt-1.5 text-xs leading-relaxed text-[#694944]">Permanently remove your account and profile data.</p><button className="danger-button w-full" type="button" onClick={askToDeleteAccount}>Delete account</button></section></> : <p className="p-4">Loading profile…</p>}</div>}
-      {panel === 'settings' && <div className="grid gap-7 px-7 pb-7 pt-4"><div className="flex justify-end"><button className="panel-close" type="button" onClick={() => setPanel(null)}>×</button></div><div className="grid justify-items-center text-center"><div className="grid size-20 place-items-center rounded-full bg-[#4b535d] text-white"><svg className="size-9 fill-none stroke-current stroke-[1.6]" viewBox="0 0 24 24"><path d="M9.4 4.6 10 2h4l.6 2.6 2.1 1.2 2.5-.8 2 3.5-1.9 1.8v2.4l1.9 1.8-2 3.5-2.5-.8-2.1 1.2L14 21h-4l-.6-2.6-2.1-1.2-2.5.8-2-3.5 1.9-1.8v-2.4L2.8 8.5l2-3.5 2.5.8 2.1-1.2Z"/><circle cx="12" cy="11.5" r="3.25"/></svg></div><strong className="mt-4 text-lg font-semibold">Settings</strong><span className="mt-1 text-sm text-[#6d716b]">Customize your Conflux experience</span></div><button className="neutral-button flex w-full items-center justify-center gap-2.5" id="theme-toggle" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{theme === 'dark' ? 'Light theme' : 'Dark theme'}</button></div>}
+      {panel === 'settings' && <div className="grid gap-7 px-7 pb-7 pt-4"><div className="flex justify-end"><button className="panel-close" type="button" onClick={() => setPanel(null)}>×</button></div><div className="grid justify-items-center text-center"><div className="grid size-20 place-items-center rounded-full bg-[#4b535d] text-white"><svg className="size-9 fill-none stroke-current stroke-[1.6]" viewBox="0 0 24 24"><path d="M9.4 4.6 10 2h4l.6 2.6 2.1 1.2 2.5-.8 2 3.5-1.9 1.8v2.4l1.9 1.8-2 3.5-2.5-.8-2.1 1.2L14 21h-4l-.6-2.6-2.1-1.2-2.5.8-2-3.5 1.9-1.8v-2.4L2.8 8.5l2-3.5 2.5.8 2.1-1.2Z"/><circle cx="12" cy="11.5" r="3.25"/></svg></div><strong className="mt-4 text-lg font-semibold">Settings</strong><span className="mt-1 text-sm text-[#6d716b]">Customize your Conflux experience</span></div><button className="neutral-button flex w-full items-center justify-center gap-2.5" id="theme-toggle" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{theme === 'dark' ? 'Light theme' : 'Dark theme'}</button><button className="neutral-button flex w-full items-center justify-between gap-3" type="button" aria-haspopup="dialog" onClick={() => setDialog({ kind: 'fonts' })}><span>Fonts</span><span aria-hidden="true">→</span></button></div>}
     </div><button className="activity-panel-resizer absolute inset-y-0 right-0 w-1 cursor-col-resize" type="button" aria-label="Resize activity panel" title="Drag to resize" onPointerDown={resizePanel} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setPanelWidth(Math.max(240, panelWidth - 20)); if (event.key === 'ArrowRight') setPanelWidth(Math.min(520, panelWidth + 20)); }}></button>
     </aside>}
     <section className={`editor-stage m-1 min-h-[calc(100dvh-.5rem)] rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] ${activeWorkstream ? 'overflow-hidden' : 'px-4 py-8 sm:px-8 lg:px-12 lg:py-10'}`}>
       <div className={activeWorkstream ? 'h-[calc(100dvh-.5rem)] w-full' : 'mx-auto w-full max-w-[1400px]'}><div className={activeWorkstream ? 'h-full' : ''} id="team-workspace">{workspaceContent}</div>{!activeWorkstream && <div className="mt-4"><NoticeView notice={notice} /></div>}</div>
     </section>
+    {dialog?.kind === 'fonts' && <Modal title="Fonts" compact onClose={() => setDialog(null)}><FontSettings preferences={fontPreferences} onChange={setFontPreferences} onClose={() => setDialog(null)} /></Modal>}
     {dialog?.kind === 'joined-team' && <Modal title={`You joined ${dialog.invitation.teamName}`} onClose={() => { if (!busy) setDialog(null); }}><InvitationProjects teamId={dialog.invitation.teamId} desktop={isDesktop()} busy={busy || repositoryLoading} onDownload={(item) => void downloadProject(item, dialog.invitation.teamId)} onOpen={(item) => { setDialog(null); void load(item.projectId, dialog.invitation.teamId); }} />{downloading && <p role="status" className="mt-4 text-sm">Downloading and checking the project…</p>}</Modal>}
     {dialog?.kind === 'repository-settings' && <Modal title="Shared repository" onClose={() => setDialog(null)}><RepositorySettings projectId={dialog.project.projectId} localPath={repository?.path} onSaved={(configuration) => { setRemoteRepository(configuration); setRemoteError(null); setDialog(null); }} /></Modal>}
     {dialog?.kind === 'project' && <Modal title={dialog.project ? 'Edit project' : 'Create project'} onClose={() => setDialog(null)}><EntityForm initial={dialog.project} labels={{ name: 'Project name', submit: dialog.project ? 'Save project' : 'Create project' }} busy={busy} notice={notice} onSubmit={(name, description) => void execute(async () => { if (dialog.project) await updateProject(dialog.project.projectId, name, description); else { const created = await createProject(name, description); await load(created.projectId, null); } })} /></Modal>}
