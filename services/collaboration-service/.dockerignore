@@ -1,0 +1,9 @@
+target/
+secrets/
+.conflux/
+.env
+.env.*
+.idea/
+*.iml
+*.log
+.DS_Store
