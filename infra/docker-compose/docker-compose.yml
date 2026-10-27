@@ -6,13 +6,29 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
+      POSTGRES_DB: identityDB
     ports:
       - "5432:5432"
-      - "5431:5432"
     volumes:
-      - ${POSTGRES_DATA_PATH:-/Users/sumanyadav/Desktop/pgdata}:/var/lib/postgresql
+      - ${POSTGRES_DATA_PATH:-/Users/sumanyadav/Desktop/Database/Conflux_identity/pgdata}:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  workspace-database:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${WORKSPACE_POSTGRES_PASSWORD:-workspace123}
+      POSTGRES_DB: workspaceDB
+    ports:
+      - "5431:5432"
+    volumes:
+      - ${WORKSPACE_POSTGRES_DATA_PATH:-/Users/sumanyadav/Desktop/Database/conflux_workspace/pgdata}:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d workspaceDB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -56,9 +72,9 @@ services:
     build:
       context: ../../services/workspace-service
     environment:
-      DB_URL: jdbc:postgresql://database:5432/workspaceDB
+      DB_URL: jdbc:postgresql://workspace-database:5432/workspaceDB
       DB_USERNAME: postgres
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
+      DB_PASSWORD: ${WORKSPACE_POSTGRES_PASSWORD:-workspace123}
       JWT_ISSUER: ${JWT_ISSUER:-http://localhost:8080}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-conflux-api}
       JWT_PUBLIC_KEY: file:/run/secrets/conflux/jwt-public.pem
@@ -72,7 +88,7 @@ services:
     volumes:
       - ../../services/identity-service/secrets/jwt-public.pem:/run/secrets/conflux/jwt-public.pem:ro
     depends_on:
-      database:
+      workspace-database:
         condition: service_healthy
       identity-service:
         condition: service_started
