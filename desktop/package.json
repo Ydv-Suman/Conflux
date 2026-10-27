@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "start": "tauri dev",
+    "start": "node scripts/start-desktop.cjs",
+    "start:two": "node scripts/start-desktop.cjs two",
     "build": "tsc --noEmit && vite build",
     "package": "tauri build --no-bundle",
     "lint": "eslint --ext .ts,.tsx .",

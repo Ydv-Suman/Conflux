@@ -31,12 +31,27 @@ The Projects area lists every project connected to the signed-in user. Opening a
 
 ```bash
 npm start         # Run the Tauri app
+npm start -- two  # Run two isolated Tauri apps for collaboration checks
+npm run start:two # Alias for two apps
 npm run dev       # Run the Vite frontend
 npm run build     # Type-check and build the frontend
 npm run lint      # Lint TypeScript
 npm test          # Desktop and collaboration protocol checks
 npm run package   # Build the native executable
 ```
+
+Two-app mode opens **Conflux — Test 1** and **Conflux — Test 2** using one Vite
+server on port 5173. Each app has its own native state and application-data
+directory (`com.conflux.desktop.dev1` / `com.conflux.desktop.dev2`). Browser
+sessions are private, so sign into a different account in each app; logins and
+browser preferences are cleared when they close. Native repository mappings
+persist separately. Select different local clones for the two users to avoid
+both editing the same files on disk.
+
+The first two-app launch builds two separate Rust targets and can take longer.
+Stop any existing `npm start` or `npm run dev` session first to free port 5173.
+Press Ctrl+C to stop both apps and the frontend server; exiting either app also
+stops the pair. `npm start` retains the normal app profile.
 
 ## Team invitations
 
