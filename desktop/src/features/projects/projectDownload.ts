@@ -1,9 +1,10 @@
-import { getDefaultWorkstream, getProjectRepository } from './api';
+import { getDefaultWorkstream, getProjectRepository, type Project } from './api';
 import { getMyTeamCapabilities } from '../teams/api';
 import { downloadRepository, isDesktop, selectDownloadFolder, restoreRepository } from '../repository/api';
 import { initializeSharedWorkspace, isRepositoryReady, openSharedRepository, validateSharedRepository } from './sharedWorkspace';
 
-export async function downloadSharedProject(projectId: string, teamId: string, onStart: () => void = () => {}) {
+export async function downloadSharedProject(project: Pick<Project, 'projectId' | 'name'>, teamId: string, onStart: () => void = () => {}) {
+  const { projectId, name } = project;
   if (!isDesktop()) throw new Error('Open Conflux desktop to download project files.');
   // The destination picker is consent to download; cancellation leaves membership and files unchanged.
   const parent = await selectDownloadFolder();
@@ -19,7 +20,7 @@ export async function downloadSharedProject(projectId: string, teamId: string, o
     if (saved) { validateSharedRepository(current, saved); return { stream: current, repository: saved }; }
   }
   const local = await downloadRepository(configuration, parent, current.branchName,
-    isRepositoryReady(current) ? current.currentRevision! : configuration.canonicalRevision);
+    isRepositoryReady(current) ? current.currentRevision! : configuration.canonicalRevision, name);
   const stream = !isRepositoryReady(current) && capabilities.capabilities.includes('CREATE_WORKSTREAM')
     ? await initializeSharedWorkspace(current, local) : current;
   // Re-read after the download: setup or access may have changed while Git was running.

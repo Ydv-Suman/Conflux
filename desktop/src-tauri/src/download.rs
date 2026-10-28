@@ -11,6 +11,7 @@ pub enum AccessMode { Public, HttpsCredentialHelper, SshAgent }
 #[serde(rename_all = "camelCase")]
 pub struct DownloadRequest {
     project_id: String,
+    project_name: String,
     parent_path: String,
     repository_url: String,
     access_mode: AccessMode,
@@ -95,11 +96,30 @@ fn run(command: &mut Command, failure: &str) -> Result<(), String> {
     }
 }
 
+fn project_folder_name(name: &str) -> Result<String, String> {
+    // A project name is one portable path component, never a path supplied to Git.
+    let sanitized: String = name.chars().map(|c| {
+        if c.is_control() || "<>:\"/\\|?*".contains(c) { '-' } else { c }
+    }).collect();
+    let mut name = sanitized.trim_matches(|c: char| c.is_whitespace() || c == '.').to_string();
+    if name.is_empty() || name.len() > 240 {
+        return Err("The project name cannot be used as a folder name. Rename the project with a shorter, non-empty name.".into());
+    }
+    let stem = name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| stem.strip_prefix(prefix)
+            .is_some_and(|suffix| matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"))) {
+        name.insert(0, '_');
+    }
+    Ok(name)
+}
+
 fn download(request: &DownloadRequest) -> Result<PathBuf, String> {
+    let folder_name = project_folder_name(&request.project_name)?;
     validate(request)?;
     let parent = fs::canonicalize(&request.parent_path).map_err(|_| "Choose an existing download folder.".to_string())?;
     if !parent.is_dir() { return Err("Choose a folder for the download.".into()); }
-    let destination = parent.join(format!("conflux-{}", request.project_id));
+    let destination = parent.join(folder_name);
     clone_into(request, &destination, git_command(&request.access_mode))?;
     Ok(destination)
 }
@@ -134,10 +154,29 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn request() -> DownloadRequest {
-        DownloadRequest { project_id: "project-1".into(), parent_path: String::new(),
+        DownloadRequest { project_id: "project-1".into(), project_name: "Iris Predictor".into(), parent_path: String::new(),
             repository_url: "https://git.example.com/team/project.git".into(), access_mode: AccessMode::Public,
             canonical_branch: "main".into(), canonical_revision: "a".repeat(40),
             checkout_branch: "conflux/team/team-1".into(), checkout_revision: "a".repeat(40) }
+    }
+
+    #[test]
+    fn project_names_become_safe_folders_without_ids() {
+        for (name, expected) in [
+            ("iris-predictor", "iris-predictor"), (" Iris Predictor. ", "Iris Predictor"),
+            ("预测项目", "预测项目"), ("../../outside", "-..-outside"),
+            ("C:\\repo/name?", "C--repo-name-"), ("CON.txt", "_CON.txt"),
+            ("lpt1", "_lpt1"), ("COM¹", "_COM¹"), ("CON .txt", "_CON .txt"),
+            ("line\nbreak", "line-break"),
+        ] {
+            let folder = project_folder_name(name).unwrap();
+            assert_eq!(folder, expected);
+            assert_eq!(Path::new(&folder).components().count(), 1);
+            assert!(!Path::new(&folder).is_absolute());
+        }
+        for name in ["", " . . ", &"a".repeat(241), &"项".repeat(81)] {
+            assert!(project_folder_name(name).is_err());
+        }
     }
 
     #[test]
@@ -182,7 +221,7 @@ mod tests {
         fs::write(source.join("uncommitted.txt"), "keep this").unwrap();
         let mut r = request(); r.repository_url = source.to_string_lossy().into(); r.canonical_revision = canonical;
         r.checkout_revision = shared.clone();
-        let target = root.join("download");
+        let target = root.join(project_folder_name(&r.project_name).unwrap());
         // Test only: a local transport exercises real Git without external credentials or network access.
         clone_into(&r, &target, Command::new("git")).unwrap();
         assert_eq!(git(&target, &["branch", "--show-current"]), r.checkout_branch);
