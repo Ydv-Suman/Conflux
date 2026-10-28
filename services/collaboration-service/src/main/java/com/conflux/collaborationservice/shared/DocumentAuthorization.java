@@ -1,4 +1,4 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.shared;
 
 import java.time.Duration;
 import java.util.Set;
@@ -11,7 +11,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 
 @Component
-class DocumentAuthorization {
+public class DocumentAuthorization {
     private final WebClient identity;
     private final WebClient workspace;
 
@@ -22,7 +22,7 @@ class DocumentAuthorization {
         workspace = builder.clone().baseUrl(workspaceUrl).build();
     }
 
-    Mono<UUID> authorize(DocumentId document, Credentials credentials) {
+    public Mono<UUID> authorize(DocumentId document, Credentials credentials) {
         if (credentials == null || credentials.teamId() == null || credentials.token() == null
                 || credentials.token().isBlank() || credentials.token().length() > 8192) {
             return Mono.error(new Denied(4401));
@@ -57,13 +57,13 @@ class DocumentAuthorization {
                                 : error.getStatusCode().is4xxClientError() ? 4403 : 1013));
     }
 
-    record Credentials(UUID teamId, String token) {
+    public record Credentials(UUID teamId, String token) {
         @Override public String toString() { return "Credentials[redacted]"; }
     }
     record Membership(UUID teamId, UUID userId, Set<String> capabilities) { }
     record Workstream(UUID projectId, UUID teamId, UUID workstreamId, boolean repositoryReady, String status) { }
-    static final class Denied extends RuntimeException {
-        final int code;
-        Denied(int code) { super("Document access denied"); this.code = code; }
+    public static final class Denied extends RuntimeException {
+        public final int code;
+        public Denied(int code) { super("Document access denied"); this.code = code; }
     }
 }

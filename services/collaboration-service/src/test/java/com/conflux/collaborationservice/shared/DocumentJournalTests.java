@@ -1,4 +1,4 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.shared;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,12 +18,14 @@ class DocumentJournalTests {
     final UUID actor = UUID.randomUUID();
 
     @Test void restoresUpdatesAndAttributionAfterRestart() throws Exception {
-        try (var journal = open()) { journal.append(document, actor, new byte[]{1, 2, 3}, 1); }
+        java.time.Instant accepted;
+        try (var journal = open()) { accepted = journal.append(document, actor, new byte[]{1, 2, 3}, 1).timestamp(); }
         try (var restarted = open()) {
             var entry = restarted.read(document).getFirst();
             assertEquals(1, entry.sequence());
             assertEquals(actor, entry.actorId());
             assertNotNull(entry.timestamp());
+            assertEquals(accepted, entry.timestamp());
             assertArrayEquals(new byte[]{1, 2, 3}, entry.update());
         }
     }

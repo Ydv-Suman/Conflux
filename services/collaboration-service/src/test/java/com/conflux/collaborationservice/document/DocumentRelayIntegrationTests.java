@@ -1,15 +1,17 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.document;
 
+import com.conflux.collaborationservice.shared.DocumentAuthorization;
+import com.conflux.collaborationservice.shared.DocumentId;
+import com.conflux.collaborationservice.shared.DocumentJournal;
+import com.conflux.collaborationservice.shared.WebSocketPeer;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -52,9 +54,9 @@ class DocumentRelayIntegrationTests {
 
     @Test void authenticatesBeforeReplayingAnyDocumentBytes() throws Exception {
         DocumentId room = room();
-        try (Peer owner = connect(room, "alice")) {
+        try (WebSocketPeer owner = connect(room, "alice")) {
             owner.control("initialize"); owner.send(new byte[]{1, 2}); owner.control("synced");
-            try (Peer denied = connect(room, "denied"); Peer expired = connect(room, "expired")) {
+            try (WebSocketPeer denied = connect(room, "denied"); WebSocketPeer expired = connect(room, "expired")) {
                 assertEquals(4403, denied.closed.get(5, TimeUnit.SECONDS));
                 assertEquals(4401, expired.closed.get(5, TimeUnit.SECONDS));
                 assertTrue(denied.messages.isEmpty());
@@ -65,7 +67,7 @@ class DocumentRelayIntegrationTests {
 
     @Test void serializesSimultaneousEditsAndRecordsAuthenticatedContributors() throws Exception {
         DocumentId room = room();
-        try (Peer alice = initializer(room); Peer bob = connect(room, "bob")) {
+        try (WebSocketPeer alice = initializer(room); WebSocketPeer bob = connect(room, "bob")) {
             assertNull(bob.messages.poll(150, TimeUnit.MILLISECONDS));
             alice.send(new byte[]{1}); alice.control("synced");
             assertArrayEquals(new byte[]{1}, bob.binary()); bob.control("synced");
@@ -82,17 +84,17 @@ class DocumentRelayIntegrationTests {
 
     @Test void replaysPersistedHistoryAndDeduplicatesIdenticalRetries() throws Exception {
         DocumentId room = room();
-        try (Peer alice = connect(room, "alice")) {
+        try (WebSocketPeer alice = connect(room, "alice")) {
             alice.control("initialize"); alice.send(new byte[]{4}); alice.control("synced");
             alice.send(new byte[]{4});
             alice.send(new byte[]{5});
-            try (Peer bob = connect(room, "bob")) {
+            try (WebSocketPeer bob = connect(room, "bob")) {
                 assertArrayEquals(new byte[]{4}, bob.binary());
                 assertArrayEquals(new byte[]{5}, bob.binary());
                 bob.control("synced");
             }
         }
-        try (Peer reconnect = connect(room, "alice")) {
+        try (WebSocketPeer reconnect = connect(room, "alice")) {
             assertArrayEquals(new byte[]{4}, reconnect.binary());
             assertArrayEquals(new byte[]{5}, reconnect.binary());
             reconnect.control("synced");
@@ -103,7 +105,7 @@ class DocumentRelayIntegrationTests {
     @Test void separatesDocumentsAndWorkstreams() throws Exception {
         DocumentId first = room();
         DocumentId other = new DocumentId(first.projectId(), UUID.randomUUID(), first.documentId());
-        try (Peer alice = connect(first, "alice"); Peer bob = connect(other, "bob")) {
+        try (WebSocketPeer alice = connect(first, "alice"); WebSocketPeer bob = connect(other, "bob")) {
             alice.control("initialize"); bob.control("initialize");
             alice.send(new byte[]{6}); alice.control("synced");
             assertNull(bob.messages.poll(150, TimeUnit.MILLISECONDS));
@@ -115,7 +117,7 @@ class DocumentRelayIntegrationTests {
 
     @Test void transfersInitializationWhenTheFirstParticipantDisconnects() throws Exception {
         DocumentId room = room();
-        try (Peer alice = initializer(room); Peer bob = connect(room, "bob")) {
+        try (WebSocketPeer alice = initializer(room); WebSocketPeer bob = connect(room, "bob")) {
             alice.close();
             bob.control("initialize"); bob.send(new byte[]{8}); bob.control("synced");
             assertEquals(BOB, journal.read(room).getFirst().actorId());
@@ -123,7 +125,7 @@ class DocumentRelayIntegrationTests {
     }
 
     @Test void closesAnExistingSessionWhenMembershipIsRevoked() throws Exception {
-        try (Peer alice = connect(room(), "alice")) {
+        try (WebSocketPeer alice = connect(room(), "alice")) {
             alice.control("initialize"); alice.send(new byte[]{9}); alice.control("synced");
             revoked.set(true);
             assertEquals(4403, alice.closed.get(9, TimeUnit.SECONDS));
@@ -132,7 +134,7 @@ class DocumentRelayIntegrationTests {
 
     @Test void doesNotLetASecondParticipantSeedAnUninitializedDocument() throws Exception {
         DocumentId room = room();
-        try (Peer alice = initializer(room); Peer bob = connect(room, "bob")) {
+        try (WebSocketPeer alice = initializer(room); WebSocketPeer bob = connect(room, "bob")) {
             bob.send(new byte[]{42});
             assertEquals(1008, bob.closed.get(5, TimeUnit.SECONDS));
             assertTrue(journal.read(room).isEmpty());
@@ -143,21 +145,25 @@ class DocumentRelayIntegrationTests {
 
     @Test void rejectsOversizedWireMessagesWithoutPersistingThem() throws Exception {
         DocumentId room = room();
-        try (Peer alice = initializer(room)) {
+        try (WebSocketPeer alice = initializer(room); WebSocketPeer bob = connect(room, "bob")) {
             alice.socket.sendBinary(ByteBuffer.wrap(new byte[DocumentJournal.MAX_UPDATE + 1]), true)
                     .exceptionally(error -> null).get(5, TimeUnit.SECONDS);
-            assertEquals(1009, alice.closed.get(5, TimeUnit.SECONDS));
+            WebSocketPeer.assertOversizedRejection(alice.closed);
+            // The rejected payload must not be broadcast; the waiting peer becomes initializer.
+            bob.control("initialize");
             assertTrue(journal.read(room).isEmpty());
+            bob.send(new byte[]{1, 2}); bob.control("synced");
+            assertArrayEquals(new byte[]{1, 2}, journal.read(room).getFirst().update());
         }
     }
 
     @Test void rejectsBinaryBeforeAuthenticationAndTokensInUrls() throws Exception {
         DocumentId room = room();
-        try (Peer peer = new Peer(endpoint(room))) {
+        try (WebSocketPeer peer = new WebSocketPeer(endpoint(room))) {
             peer.send(new byte[]{10});
             assertEquals(4401, peer.closed.get(5, TimeUnit.SECONDS));
         }
-        try (Peer peer = new Peer(URI.create(endpoint(room) + "?token=secret"))) {
+        try (WebSocketPeer peer = new WebSocketPeer(URI.create(endpoint(room) + "?token=secret"))) {
             assertEquals(1008, peer.closed.get(5, TimeUnit.SECONDS));
         }
         assertTrue(journal.read(room).isEmpty());
@@ -165,9 +171,9 @@ class DocumentRelayIntegrationTests {
 
     @Test void activityRequiresAccessAndPaginatesNewestFirstWithoutDocumentContents() throws Exception {
         DocumentId room = room();
-        try (Peer alice = connect(room, "alice")) {
+        try (WebSocketPeer alice = connect(room, "alice")) {
             alice.control("initialize"); alice.send(new byte[]{11}); alice.control("synced");
-            try (Peer bob = connect(room, "bob")) {
+            try (WebSocketPeer bob = connect(room, "bob")) {
                 bob.binary(); bob.control("synced"); alice.send(new byte[]{12}); bob.binary();
             }
             var client = HttpClient.newHttpClient();
@@ -185,8 +191,8 @@ class DocumentRelayIntegrationTests {
     }
 
     private DocumentId room() { return new DocumentId(PROJECT, UUID.randomUUID(), "main-ts"); }
-    private Peer initializer(DocumentId room) throws Exception {
-        Peer peer = connect(room, "alice");
+    private WebSocketPeer initializer(DocumentId room) throws Exception {
+        WebSocketPeer peer = connect(room, "alice");
         peer.control("initialize");
         return peer;
     }
@@ -194,41 +200,10 @@ class DocumentRelayIntegrationTests {
         return URI.create("ws://localhost:" + port + "/ws/projects/" + document.projectId()
                 + "/workstreams/" + document.workstreamId() + "/documents/" + document.documentId());
     }
-    private Peer connect(DocumentId document, String token) throws Exception {
-        Peer peer = new Peer(endpoint(document));
+    private WebSocketPeer connect(DocumentId document, String token) throws Exception {
+        WebSocketPeer peer = new WebSocketPeer(endpoint(document));
         peer.socket.sendText("{\"teamId\":\"" + TEAM + "\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
         return peer;
     }
 
-    static final class Peer implements WebSocket.Listener, AutoCloseable {
-        final BlockingQueue<Object> messages = new LinkedBlockingQueue<>();
-        final CompletableFuture<Integer> closed = new CompletableFuture<>();
-        final WebSocket socket;
-        private final java.io.ByteArrayOutputStream binary = new java.io.ByteArrayOutputStream();
-        private final StringBuilder text = new StringBuilder();
-        Peer(URI endpoint) throws Exception {
-            socket = HttpClient.newHttpClient().newWebSocketBuilder().connectTimeout(Duration.ofSeconds(5))
-                    .buildAsync(endpoint, this).get(5, TimeUnit.SECONDS);
-        }
-        @Override public void onOpen(WebSocket socket) { socket.request(1); }
-        @Override public CompletionStage<?> onBinary(WebSocket socket, ByteBuffer data, boolean last) {
-            byte[] bytes = new byte[data.remaining()]; data.get(bytes); binary.writeBytes(bytes);
-            if (last) { messages.add(binary.toByteArray()); binary.reset(); }
-            socket.request(1); return null;
-        }
-        @Override public CompletionStage<?> onText(WebSocket socket, CharSequence data, boolean last) {
-            text.append(data); if (last) { messages.add(text.toString()); text.setLength(0); }
-            socket.request(1); return null;
-        }
-        @Override public CompletionStage<?> onClose(WebSocket socket, int status, String reason) {
-            closed.complete(status); return null;
-        }
-        @Override public void onError(WebSocket socket, Throwable error) { closed.completeExceptionally(error); }
-        void send(byte[] bytes) throws Exception { socket.sendBinary(ByteBuffer.wrap(bytes), true).get(5, TimeUnit.SECONDS); }
-        byte[] binary() throws Exception { return assertInstanceOf(byte[].class, messages.poll(5, TimeUnit.SECONDS)); }
-        void control(String type) throws Exception { assertEquals("{\"type\":\"" + type + "\"}", messages.poll(5, TimeUnit.SECONDS)); }
-        @Override public void close() {
-            if (!socket.isOutputClosed()) socket.sendClose(1000, "").exceptionally(error -> null).join();
-        }
-    }
 }

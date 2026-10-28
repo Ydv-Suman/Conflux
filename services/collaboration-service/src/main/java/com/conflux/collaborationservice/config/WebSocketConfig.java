@@ -1,5 +1,8 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.config;
 
+import com.conflux.collaborationservice.document.DocumentRelayHandler;
+import com.conflux.collaborationservice.filetree.FileTreeHandler;
+import com.conflux.collaborationservice.shared.DocumentJournal;
 import java.util.Map;
 
 import org.springframework.context.annotation.Bean;
@@ -23,8 +26,9 @@ class WebSocketConfig {
 			"/ws/projects/*/workstreams/*/documents/*";
 
 	@Bean
-	HandlerMapping webSocketHandlerMapping(DocumentRelayHandler handler) {
-		return new SimpleUrlHandlerMapping(Map.of(DOCUMENT_ENDPOINT_PATTERN, handler), -1);
+	HandlerMapping webSocketHandlerMapping(DocumentRelayHandler handler, FileTreeHandler files) {
+		return new SimpleUrlHandlerMapping(Map.of(DOCUMENT_ENDPOINT_PATTERN, handler,
+				"/ws/projects/*/workstreams/*/files", files), -1);
 	}
 
 	@Bean
