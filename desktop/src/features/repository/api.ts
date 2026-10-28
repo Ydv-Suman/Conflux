@@ -63,9 +63,9 @@ export const selectDownloadFolder = async () => {
   return typeof path === 'string' ? path : null;
 };
 
-export const downloadRepository = (configuration: ProjectRepository, parentPath: string, checkoutBranch: string, checkoutRevision: string) =>
+export const downloadRepository = (configuration: ProjectRepository, parentPath: string, checkoutBranch: string, checkoutRevision: string, projectName: string) =>
   invoke<RepositoryInfo>('download_repository', { request: {
-    projectId: configuration.projectId, parentPath, repositoryUrl: configuration.repositoryUrl,
+    projectId: configuration.projectId, projectName, parentPath, repositoryUrl: configuration.repositoryUrl,
     accessMode: configuration.accessMode, canonicalBranch: configuration.canonicalBranch,
     canonicalRevision: configuration.canonicalRevision, checkoutBranch, checkoutRevision,
   } });

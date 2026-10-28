@@ -380,7 +380,7 @@ function Workspace() {
     if (downloadLock.current || busy || repositoryLoading || !canLeaveWorkspace()) return;
     downloadLock.current = true; setBusy(true); setDownloading(true); setRequestError(null);
     try {
-      const result = await downloadSharedProject(target.projectId, targetTeamId, () => setOpenFile(null));
+      const result = await downloadSharedProject(target, targetTeamId, () => setOpenFile(null));
       if (result) { setDialog(null); await load(target.projectId, targetTeamId); }
     } catch (error) {
       setDialog(null);

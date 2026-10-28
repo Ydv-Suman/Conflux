@@ -114,7 +114,7 @@ styles. Run `npm test`, `npm run build`, `npm run lint`, and
 
 After accepting an invitation, a dialog lists the projects assigned to that team.
 Choose **Download project**, then select a parent folder. The native desktop creates
-`conflux-<projectId>` inside that folder, checks the published canonical commit,
+a folder named after the project (for example, `iris-predictor`) inside that folder, checks the published canonical commit,
 checks out the team's shared branch at its current revision, and opens Explorer.
 The destination must be new: existing folders and work are never overwritten.
 Canceling the picker keeps the invitation accepted and the existing editor open.

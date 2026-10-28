@@ -16,6 +16,7 @@ const mock = (relative, exports) => {
 let desktop, folder, handler, current, configuration, roles, saved;
 const calls = [];
 const revision = 'a'.repeat(40);
+const project = { projectId: 'p1', name: 'Iris Predictor' };
 const stream = { projectId: 'p1', teamId: 't1', workstreamId: 'w1', name: 'Shared', branchName: 'conflux/team/t1', baseRevision: revision, currentRevision: 'b'.repeat(40), repositoryReady: true };
 const remote = { projectId: 'p1', repositoryUrl: 'https://git.example.com/repo.git', accessMode: 'PUBLIC', canonicalBranch: 'main', canonicalRevision: revision, version: 1 };
 const local = { branch: stream.branchName, revision: stream.currentRevision, branches: [stream.branchName], path: '/download', files: [] };
@@ -63,23 +64,23 @@ test('invitation project list contains only projects assigned to that team', asy
 
 test('cancelling download does not request metadata, clone, or close the current editor', async () => {
   folder = null; let started = false;
-  assert.equal(await downloadSharedProject('p1', 't1', () => { started = true; }), null);
+  assert.equal(await downloadSharedProject(project, 't1', () => { started = true; }), null);
   assert.equal(started, false);
   assert.deepEqual(calls, [['picker']]);
 });
 
 test('browser cannot invoke the folder picker or native clone', async () => {
   desktop = false;
-  await assert.rejects(downloadSharedProject('p1', 't1'), /Conflux desktop/);
+  await assert.rejects(downloadSharedProject(project, 't1'), /Conflux desktop/);
   assert.deepEqual(calls, []);
 });
 
 test('developer download uses current shared revision and opens that same workstream', async () => {
   let started = false;
-  const result = await downloadSharedProject('p1', 't1', () => { started = true; });
+  const result = await downloadSharedProject(project, 't1', () => { started = true; });
   assert.equal(started, true);
   assert.equal(result.stream.workstreamId, 'w1');
-  assert.deepEqual(calls.find(([name]) => name === 'clone'), ['clone', remote, folder, stream.branchName, stream.currentRevision]);
+  assert.deepEqual(calls.find(([name]) => name === 'clone'), ['clone', remote, folder, stream.branchName, stream.currentRevision, project.name]);
   assert.ok(calls.some(([name]) => name === 'open'));
   assert.ok(!calls.some(([name]) => name === 'initialize'));
 });
@@ -87,7 +88,7 @@ test('developer download uses current shared revision and opens that same workst
 test('authorized manager downloads and initializes an unconfigured shared workstream', async () => {
   current = { ...stream, currentRevision: null, baseRevision: null, repositoryReady: false };
   roles = ['JOIN_WORKSTREAM', 'CREATE_WORKSTREAM'];
-  const result = await downloadSharedProject('p1', 't1');
+  const result = await downloadSharedProject(project, 't1');
   assert.equal(calls.find(([name]) => name === 'clone')[4], revision);
   assert.ok(calls.some(([name]) => name === 'initialize'));
   assert.equal(result.stream, stream);
@@ -95,22 +96,22 @@ test('authorized manager downloads and initializes an unconfigured shared workst
 
 test('developer can download a pending project without escalating setup permissions', async () => {
   current = { ...stream, currentRevision: null, baseRevision: null, repositoryReady: false };
-  const result = await downloadSharedProject('p1', 't1');
+  const result = await downloadSharedProject(project, 't1');
   assert.equal(result.stream.repositoryReady, false);
   assert.ok(!calls.some(([name]) => name === 'initialize' || name === 'open'));
 });
 
 test('unconfigured remote or missing join permission never starts clone', async () => {
   configuration = null;
-  await assert.rejects(downloadSharedProject('p1', 't1'), /configure the shared repository/);
+  await assert.rejects(downloadSharedProject(project, 't1'), /configure the shared repository/);
   configuration = remote; roles = [];
-  await assert.rejects(downloadSharedProject('p1', 't1'), /role does not allow/);
+  await assert.rejects(downloadSharedProject(project, 't1'), /role does not allow/);
   assert.ok(!calls.some(([name]) => name === 'clone'));
 });
 
 test('an existing valid shared mapping is opened without a second clone', async () => {
   saved = local;
-  const result = await downloadSharedProject('p1', 't1');
+  const result = await downloadSharedProject(project, 't1');
   assert.equal(result.repository, local);
   assert.ok(!calls.some(([name]) => name === 'clone'));
 });
@@ -121,7 +122,7 @@ test('access is checked again after Git completes before opening the editor', as
     if (route.endsWith('/default') && ++checks === 2) roles = [];
     return route.endsWith('/repository') ? configuration : current;
   };
-  await assert.rejects(downloadSharedProject('p1', 't1'), /access changed/);
+  await assert.rejects(downloadSharedProject(project, 't1'), /access changed/);
   assert.ok(calls.some(([name]) => name === 'clone'));
   assert.ok(!calls.some(([name]) => name === 'open'));
 });
