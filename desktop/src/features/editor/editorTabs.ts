@@ -1,8 +1,9 @@
 import type { ConnectionPhase } from './documentConnection';
 
-export type EditorFile = { path: string; content: string; dirty?: boolean; connectionPhase?: ConnectionPhase };
+export type EditorFile = { path: string; content: string; documentId?: string; dirty?: boolean; connectionPhase?: ConnectionPhase };
 export type EditorTabsState = { files: EditorFile[]; activePath: string | null };
 export type EditorTabsAction =
+  | { type: 'tree'; entries: { id: string; path: string }[] }
   | { type: 'open'; file: EditorFile }
   | { type: 'select'; path: string }
   | { type: 'dirty'; path: string; dirty: boolean }
@@ -11,8 +12,19 @@ export type EditorTabsAction =
 
 export function editorTabsReducer(state: EditorTabsState, action: EditorTabsAction): EditorTabsState {
   switch (action.type) {
-    case 'open':
+    case 'tree': {
+      const activeId = state.files.find((file) => file.path === state.activePath)?.documentId;
+      const files = state.files.flatMap((file) => {
+        const entry = action.entries.find((item) => file.documentId ? item.id === file.documentId : item.path === file.path);
+        return entry ? [{ ...file, path: entry.path, documentId: entry.id }] : file.dirty ? [file] : [];
+      });
+      return { files, activePath: files.find((file) => activeId ? file.documentId === activeId : file.path === state.activePath)?.path ?? files[0]?.path ?? null };
+    }
+    case 'open': {
+      const existing = action.file.documentId && state.files.find((file) => file.documentId === action.file.documentId);
+      if (existing) return { files: state.files.map((file) => file === existing && file.path !== action.file.path ? { ...file, path: action.file.path } : file), activePath: action.file.path };
       return { files: state.files.some((file) => file.path === action.file.path) ? state.files : [...state.files, action.file], activePath: action.file.path };
+    }
     case 'select':
       return state.files.some((file) => file.path === action.path) ? { ...state, activePath: action.path } : state;
     case 'dirty':

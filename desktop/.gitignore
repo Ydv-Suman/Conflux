@@ -93,3 +93,7 @@ dist/
 src-tauri/target/
 out/
 src-tauri/gen/schemas/
+
+# Material Icon Theme assets generated from the pinned npm package
+public/material-icons/
+src/features/repository/material-icons.generated.json
