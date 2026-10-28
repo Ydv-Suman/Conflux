@@ -1,5 +1,8 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.document;
 
+import com.conflux.collaborationservice.shared.DocumentAuthorization;
+import com.conflux.collaborationservice.shared.DocumentId;
+import com.conflux.collaborationservice.shared.DocumentJournal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

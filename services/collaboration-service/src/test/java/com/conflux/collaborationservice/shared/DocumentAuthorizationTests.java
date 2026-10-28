@@ -1,4 +1,4 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.shared;
 
 import static org.junit.jupiter.api.Assertions.*;
 

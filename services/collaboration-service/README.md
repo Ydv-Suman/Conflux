@@ -68,3 +68,29 @@ Limits: 2 MiB per message, 32 MiB or 10,000 records per document, 32 active room
 This is a bounded single-instance implementation. CRDT compaction, aggregate disk quotas, multi-instance fanout/shared storage, per-line attribution, Git checkpoint coordination, and automatic desktop reconnect are not implemented here. Binary Yjs payloads are opaque to the server; semantic validation and convergence belong to compatible clients. Backend tests exercise simultaneous relay, access checks and revocation, replay, initialization handoff, attribution, and journal recovery; a two-desktop Yjs convergence test remains part of the desktop update.
 
 Run backend checks with `./mvnw test`.
+
+## Package layout
+
+```text
+com.conflux.collaborationservice
+├── CollaborationServiceApplication
+├── config      # WebSocket routing and transport configuration
+├── document    # Document relay and contributor activity
+├── filetree    # File/folder operations, state, and synchronization
+└── shared      # Authorization, document identifiers, and durable journals
+```
+
+Tests mirror the feature packages. Their shared WebSocket client lives under
+`src/test/java/com/conflux/collaborationservice/shared`.
+
+## File and folder synchronization
+
+The backend also provides `/ws/projects/{projectId}/workstreams/{workstreamId}/files`
+for authenticated creation, rename/move, and deletion of files and folders.
+Folder operations apply to the whole subtree. Version checks prevent stale changes
+from overwriting newer ones; operation IDs make retries idempotent. Accepted events
+are persisted before broadcast and replayed after reconnecting.
+
+See [the file-tree protocol](FILE_TREE_PROTOCOL.md) for message formats, initialization,
+stable document IDs, limits, and desktop integration requirements. The desktop
+watcher and Explorer are not connected to this channel yet.

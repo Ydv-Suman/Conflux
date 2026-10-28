@@ -1,5 +1,8 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.document;
 
+import com.conflux.collaborationservice.shared.DocumentAuthorization;
+import com.conflux.collaborationservice.shared.DocumentId;
+import com.conflux.collaborationservice.shared.DocumentJournal;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -23,7 +26,7 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 @Component
-final class DocumentRelayHandler implements WebSocketHandler {
+public final class DocumentRelayHandler implements WebSocketHandler {
     private final DocumentAuthorization authorization;
     private final DocumentJournal journal;
     private final ObjectMapper json;

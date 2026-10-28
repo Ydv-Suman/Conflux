@@ -1,4 +1,4 @@
-package com.conflux.collaborationservice;
+package com.conflux.collaborationservice.shared;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,15 +21,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
-class DocumentJournal implements AutoCloseable {
-    static final int MAX_UPDATE = 2 * 1024 * 1024;
+public class DocumentJournal implements AutoCloseable {
+    public static final int MAX_UPDATE = 2 * 1024 * 1024;
     static final long MAX_HISTORY = 32L * 1024 * 1024;
     static final int MAX_RECORDS = 10000;
     private final Path directory;
     private final FileChannel lockChannel;
     private final FileLock lock;
 
-    DocumentJournal(@Value("${app.document-directory}") String directory) throws IOException {
+    public DocumentJournal(@Value("${app.document-directory}") String directory) throws IOException {
         this.directory = Path.of(directory);
         Files.createDirectories(this.directory);
         lockChannel = FileChannel.open(this.directory.resolve(".lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
@@ -39,7 +39,7 @@ class DocumentJournal implements AutoCloseable {
     }
 
     // shortcut: single-instance append journal; add CRDT compaction/shared storage before horizontal scaling.
-    synchronized List<Entry> read(DocumentId document) throws IOException {
+    public synchronized List<Entry> read(DocumentId document) throws IOException {
         Path path = path(document);
         if (!Files.exists(path)) return List.of();
         if (Files.size(path) > MAX_HISTORY) throw new IOException("Document history exceeds limit");
@@ -70,10 +70,10 @@ class DocumentJournal implements AutoCloseable {
         return entries;
     }
 
-    synchronized Entry append(DocumentId document, UUID actor, byte[] update, int sequence) throws IOException {
+    public synchronized Entry append(DocumentId document, UUID actor, byte[] update, int sequence) throws IOException {
         if (update.length == 0 || update.length > MAX_UPDATE || sequence > MAX_RECORDS)
             throw new IOException("Document update limit exceeded");
-        Instant time = Instant.now();
+        Instant time = Instant.ofEpochMilli(System.currentTimeMillis());
         int size = 24 + update.length;
         ByteBuffer body = ByteBuffer.allocate(size);
         body.putLong(actor.getMostSignificantBits()).putLong(actor.getLeastSignificantBits())
@@ -112,5 +112,5 @@ class DocumentJournal implements AutoCloseable {
 
     @PreDestroy @Override public void close() throws IOException { lock.release(); lockChannel.close(); }
 
-    record Entry(int sequence, UUID actorId, Instant timestamp, byte[] update) { }
+    public record Entry(int sequence, UUID actorId, Instant timestamp, byte[] update) { }
 }
