@@ -145,11 +145,15 @@ class DocumentRelayIntegrationTests {
 
     @Test void rejectsOversizedWireMessagesWithoutPersistingThem() throws Exception {
         DocumentId room = room();
-        try (WebSocketPeer alice = initializer(room)) {
+        try (WebSocketPeer alice = initializer(room); WebSocketPeer bob = connect(room, "bob")) {
             alice.socket.sendBinary(ByteBuffer.wrap(new byte[DocumentJournal.MAX_UPDATE + 1]), true)
                     .exceptionally(error -> null).get(5, TimeUnit.SECONDS);
-            assertEquals(1009, alice.closed.get(5, TimeUnit.SECONDS));
+            WebSocketPeer.assertOversizedRejection(alice.closed);
+            // The rejected payload must not be broadcast; the waiting peer becomes initializer.
+            bob.control("initialize");
             assertTrue(journal.read(room).isEmpty());
+            bob.send(new byte[]{1, 2}); bob.control("synced");
+            assertArrayEquals(new byte[]{1, 2}, journal.read(room).getFirst().update());
         }
     }
 

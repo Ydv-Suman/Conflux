@@ -2,11 +2,13 @@ package com.conflux.collaborationservice.shared;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.concurrent.*;
 
 public final class WebSocketPeer implements WebSocket.Listener, AutoCloseable {
@@ -36,6 +38,16 @@ public final class WebSocketPeer implements WebSocket.Listener, AutoCloseable {
     public void send(byte[] bytes) throws Exception { socket.sendBinary(ByteBuffer.wrap(bytes), true).get(5, TimeUnit.SECONDS); }
     public byte[] binary() throws Exception { return assertInstanceOf(byte[].class, messages.poll(5, TimeUnit.SECONDS)); }
     public void control(String type) throws Exception { assertEquals("{\"type\":\"" + type + "\"}", messages.poll(5, TimeUnit.SECONDS)); }
+    public static void assertOversizedRejection(CompletableFuture<Integer> closed) throws Exception {
+        try {
+            assertEquals(1009, closed.get(5, TimeUnit.SECONDS));
+        } catch (ExecutionException error) {
+            // Rejecting a frame before its body is drained can reset TCP before the close frame arrives.
+            // Callers must also verify no persistence/broadcast and a working connection afterward.
+            if (!(error.getCause() instanceof IOException cause) || cause.getMessage() == null
+                    || !cause.getMessage().toLowerCase(Locale.ROOT).contains("connection reset")) throw error;
+        }
+    }
     @Override public void close() {
         if (!socket.isOutputClosed()) socket.sendClose(1000, "").exceptionally(error -> null).join();
     }

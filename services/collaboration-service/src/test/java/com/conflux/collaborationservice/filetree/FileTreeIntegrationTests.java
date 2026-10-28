@@ -183,10 +183,16 @@ class FileTreeIntegrationTests {
         }
         try (var peer = connect(key, "alice", 0)) {
             synced(peer, 0);
-            peer.socket.sendText("x".repeat(DocumentJournal.MAX_UPDATE + 1), true).exceptionally(error -> null).join();
-            assertEquals(1009, peer.closed.get(5, TimeUnit.SECONDS));
+            peer.socket.sendText("x".repeat(DocumentJournal.MAX_UPDATE + 1), true)
+                    .exceptionally(error -> null).get(5, TimeUnit.SECONDS);
+            WebSocketPeer.assertOversizedRejection(peer.closed);
         }
         assertEquals(0, store.load(key).version());
+        try (var healthy = connect(key, "alice", 0)) {
+            synced(healthy, 0);
+            send(healthy, initialize()); event(healthy, 1);
+            assertEquals(1, store.load(key).version());
+        }
     }
 
     private URI endpoint(DocumentId key) {
