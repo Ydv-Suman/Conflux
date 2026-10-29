@@ -52,6 +52,29 @@ class DocumentRelayIntegrationTests {
         });
     }
 
+    @Test void optedInClientReceivesReceiptsWhileLegacyPeerReceivesOnlyUpdates() throws Exception {
+        DocumentId room = room();
+        try (WebSocketPeer alice = new WebSocketPeer(endpoint(room))) {
+            alice.socket.sendText("{\"teamId\":\"" + TEAM + "\",\"token\":\"alice\",\"acknowledgements\":true}", true).get(5, TimeUnit.SECONDS);
+            alice.control("initialize"); alice.send(new byte[]{1}); alice.control("synced");
+            var receipt = new tools.jackson.databind.ObjectMapper().readTree(
+                    assertInstanceOf(String.class, alice.messages.poll(5, TimeUnit.SECONDS)));
+            assertEquals("ack", receipt.get("type").asText());
+            assertEquals(1, receipt.get("sequence").asInt());
+            assertEquals("4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a", receipt.get("sha256").asText());
+            try (WebSocketPeer bob = connect(room, "bob")) {
+                bob.binary(); bob.control("synced");
+                alice.send(new byte[]{1});
+                assertEquals(receipt, new tools.jackson.databind.ObjectMapper().readTree(
+                        assertInstanceOf(String.class, alice.messages.poll(5, TimeUnit.SECONDS))));
+                assertNull(bob.messages.poll(150, TimeUnit.MILLISECONDS));
+                bob.send(new byte[]{2}); assertArrayEquals(new byte[]{2}, alice.binary());
+                assertNull(bob.messages.poll(150, TimeUnit.MILLISECONDS));
+                assertEquals(2, journal.read(room).size());
+            }
+        }
+    }
+
     @Test void authenticatesBeforeReplayingAnyDocumentBytes() throws Exception {
         DocumentId room = room();
         try (WebSocketPeer owner = connect(room, "alice")) {
