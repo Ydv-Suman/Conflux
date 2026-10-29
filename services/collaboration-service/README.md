@@ -29,8 +29,44 @@ Project and workstream IDs are UUIDs. Document IDs allow 1–128 ASCII letters, 
 2. The server forwards the bearer token to Identity's `GET /api/teams/{teamId}/capabilities/me` and Workspace's `GET /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}`, using API version `1.0`. Both services validate authentication. Identity supplies the actor ID; the client cannot nominate an author. The member must have `JOIN_WORKSTREAM` and `EDIT_DOCUMENT`, the exact project/team/workstream must match, and the repository must be initialized and not merged or archived. No document history is exposed before these checks pass.
 3. For an existing document, apply every binary history frame to the same Y.Doc, in order. The text frame `{"type":"synced"}` marks the end of replay.
 4. For an empty document, **one participant only** receives `{"type":"initialize"}`. That participant seeds its Y.Doc from the agreed local file and sends one binary `Y.encodeStateAsUpdate(doc)` (also for an empty file). Other participants wait. After the update is durable, the server forwards it to the waiting participants and sends `synced` to everyone. If the initializer leaves or fails to initialize within roughly 10–15 seconds, another waiting participant is selected. This prevents duplicate initial text on concurrent first opens.
-5. After `synced`, send binary Yjs updates. Do not echo received updates. The server serializes updates within the room, writes and forces each new record to disk, then broadcasts to the other participants. It does not send an acknowledgement for each edit; retain local state for recovery.
+5. After `synced`, send binary Yjs updates. Do not echo received updates. The server serializes updates within the room, writes and forces each new record to disk, then broadcasts to the other participants. Clients that opt in receive a durable acknowledgement for each update (see below); legacy clients retain the existing protocol.
 6. On reconnect, keep the existing Y.Doc, authenticate again, apply replayed history with a remote origin, then send `Y.encodeStateAsUpdate(doc)` after `synced` to recover offline or unacknowledged edits. Yjs merges repeated operations. Identical binary retries are omitted from the journal. Never independently reinsert disk contents when replayed document text is empty: a user may intentionally have deleted all text.
+
+### Durable document receipts (opt-in)
+
+Add `"acknowledgements": true` to the first authentication text frame:
+
+```json
+{"teamId":"team-uuid","token":"identity-access-token","acknowledgements":true}
+```
+
+Binary payloads and history replay remain unchanged. After persisting and forcing
+an update to disk, the server sends its sender a text receipt:
+
+```json
+{"type":"ack","sha256":"<64 lowercase hex characters>","sequence":123}
+```
+
+`sha256` identifies the exact binary payload, not the resulting document text.
+`sequence` is the original durable journal sequence within this document. The
+initialization receipt follows `synced`. Replayed history does not produce receipts.
+Clients must wait for `synced` before submitting ordinary updates.
+
+Persist pending update bytes locally before sending. Remove a pending payload only
+after matching its hash to a receipt on the same document connection. Retry the
+**exact bytes** after a missing receipt, including after reconnect or service restart.
+An identical retry returns the original receipt without appending another journal
+entry, changing attribution, or broadcasting again. Identical bytes already stored
+by another participant also receive that original sequence. A newly encoded full
+snapshot can have different bytes and is a separate journal entry; Yjs handles its
+semantic overlap. Receipts confirm persistence, not authorship or peer delivery.
+
+Storage failures produce no success receipt and close the affected room with
+`1013`. Slow-client/transport failures can lose a receipt after successful persistence;
+resending safely recovers it. Missing or false `acknowledgements` retains the legacy
+behavior with no receipt frames, so the current desktop remains compatible. The
+desktop still needs durable local CRDT storage and receipt handling before it can
+claim crash-safe offline editing. Existing journal files require no migration.
 
 Permissions and token validity are checked again every five seconds (dependency requests time out after three seconds). Changes can therefore take up to about eight seconds to stop an existing connection. Outages fail closed. The desktop should use backoff for transient failures, refresh authentication once for `4401`, and stop automatic retries for `4403`.
 
