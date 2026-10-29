@@ -1,5 +1,6 @@
 mod repository;
 mod download;
+mod file_tree;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -8,6 +9,12 @@ pub fn run() {
         .manage(repository::RepositoryState::default())
         .invoke_handler(tauri::generate_handler![
             download::download_repository,
+            file_tree::file_tree_snapshot,
+            file_tree::file_tree_baseline,
+            file_tree::file_tree_load,
+            file_tree::file_tree_save,
+            file_tree::file_tree_apply,
+            file_tree::file_tree_content,
             repository::connect_repository,
             repository::create_worktree,
             repository::inspect_repository,

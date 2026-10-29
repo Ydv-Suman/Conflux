@@ -12,7 +12,7 @@ const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TREE_ENTRIES: usize = 10_000;
 
 #[derive(Default)]
-pub struct RepositoryState(Mutex<Option<PathBuf>>);
+pub struct RepositoryState(pub(crate) Mutex<Option<PathBuf>>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -212,6 +212,24 @@ mod shared_workspace_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn autosave_checks_disk_contents_and_never_recreates_deleted_files() {
+        let root = std::env::temp_dir().join(format!("conflux-save-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("Main.java");
+        fs::write(&file, "initial").unwrap();
+        save_file(&file, "edited", "initial").unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "edited");
+        save_file(&file, "edited", "initial").unwrap();
+        fs::write(&file, "external edit").unwrap();
+        assert!(save_file(&file, "editor edit", "edited").is_err());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "external edit");
+        fs::remove_file(&file).unwrap();
+        assert!(save_file(&file, "editor edit", "external edit").is_err());
+        assert!(!file.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn new_worktree_uses_commit_and_preserves_source_index_and_uncommitted_files() {
         let root = std::env::temp_dir().join(format!("conflux-dirty-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
         let source = root.join("source");
@@ -377,7 +395,7 @@ pub fn read_repository_file(
     path: String,
     state: State<'_, RepositoryState>,
 ) -> Result<String, String> {
-    let file = resolve_file(&path, &state)?;
+    let file = resolve_file(&path, &state, None)?;
     let metadata = fs::metadata(&file).map_err(|_| "The file is unavailable.".to_string())?;
     if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
         return Err("Only text files up to 2 MB can be opened.".into());
@@ -389,19 +407,30 @@ pub fn read_repository_file(
 pub fn write_repository_file(
     path: String,
     content: String,
+    previous_content: String,
+    root: String,
     state: State<'_, RepositoryState>,
 ) -> Result<(), String> {
     if content.len() as u64 > MAX_FILE_BYTES {
         return Err("Only text files up to 2 MB can be saved.".into());
     }
-    let file = resolve_file(&path, &state)?;
+    let file = resolve_file(&path, &state, Some(&root))?;
     if !file.is_file() {
         return Err("The file is unavailable.".into());
     }
+    save_file(&file, &content, &previous_content)
+}
+
+fn save_file(file: &Path, content: &str, previous_content: &str) -> Result<(), String> {
+    let current = fs::read_to_string(file).map_err(|_| "The file could not be read before saving.".to_string())?;
+    if current != previous_content && current != content {
+        return Err("This file changed on disk. Copy your editor changes, then reopen the file to reconcile them. The disk contents were preserved.".into());
+    }
+    if current == content { return Ok(()); }
     fs::write(file, content).map_err(|_| "The file could not be saved.".to_string())
 }
 
-fn database(app: &AppHandle) -> Result<Connection, String> {
+pub(crate) fn database(app: &AppHandle) -> Result<Connection, String> {
     let directory = app
         .path()
         .app_data_dir()
@@ -497,13 +526,16 @@ fn inspect_repository_data(
     })
 }
 
-fn resolve_file(path: &str, state: &State<'_, RepositoryState>) -> Result<PathBuf, String> {
+fn resolve_file(path: &str, state: &State<'_, RepositoryState>, expected_root: Option<&str>) -> Result<PathBuf, String> {
     let root = state
         .0
         .lock()
         .map_err(|_| "Repository state is unavailable.".to_string())?
         .clone()
         .ok_or_else(|| "Connect a local repository first.".to_string())?;
+    if expected_root.is_some_and(|expected| Path::new(expected) != root) {
+        return Err("The active repository changed before the file could be saved.".into());
+    }
     let relative = Path::new(path);
     if relative.is_absolute()
         || relative

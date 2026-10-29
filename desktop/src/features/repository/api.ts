@@ -47,8 +47,8 @@ export const restoreRepository = (projectId: string, workstreamId: string | null
 export const readRepositoryFile = (path: string) =>
   invoke<string>('read_repository_file', { path });
 
-export const writeRepositoryFile = (path: string, content: string) =>
-  invoke<void>('write_repository_file', { path, content });
+export const writeRepositoryFile = (path: string, content: string, root: string, previousContent: string) =>
+  invoke<void>('write_repository_file', { path, content, root, previousContent });
 
 export const rememberOpenFile = (projectId: string, workstreamId: string, path: string) =>
   invoke<void>('remember_open_file', { projectId, workstreamId, path });

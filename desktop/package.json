@@ -11,7 +11,12 @@
     "package": "tauri build --no-bundle",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "node --test tests/*.test.cjs",
-    "test:collaboration": "node scripts/check-collaboration.cjs"
+    "test:collaboration": "node scripts/check-collaboration.cjs",
+    "prepare:icons": "node scripts/prepare-material-icons.cjs",
+    "predev": "npm run prepare:icons",
+    "prebuild": "npm run prepare:icons",
+    "prelint": "npm run prepare:icons",
+    "pretest": "npm run prepare:icons"
   },
   "keywords": [],
   "author": {
@@ -29,6 +34,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "material-icon-theme": "5.40.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "vite": "^5.4.21"
