@@ -66,12 +66,21 @@ async function stop() {
   backend.kill('SIGTERM');
   try { await exited; } finally { clearTimeout(timeout); }
 }
+const storageByUser = new Map();
 function peer(name, initialContent = 'base') {
   const doc = new Y.Doc(); docs.push(doc);
   const peer = { doc, text: doc.getText('content'), state: undefined };
   const endpoint = `ws://127.0.0.1:${port}/ws/projects/${project}/workstreams/${stream}/documents/${documentIdForPath('src/main.ts')}`;
-  const connection = connectDocument({ doc, endpoint, teamId: team, initialContent,
+  if (!storageByUser.has(name)) {
+    const file = path.join(temporary, `${name}-desktop.json`);
+    storageByUser.set(name, {
+      load: async () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null,
+      save: async (value) => { fs.writeFileSync(`${file}.tmp`, JSON.stringify(value)); fs.renameSync(`${file}.tmp`, file); },
+    });
+  }
+  const connection = connectDocument({ doc, endpoint, teamId: team, initialContent, storage: storageByUser.get(name),
     getToken: async () => name, onState: (state) => { peer.state = state; } });
+  peer.connection = connection;
   connections.push(connection);
   return peer;
 }
@@ -79,7 +88,8 @@ function peer(name, initialContent = 'base') {
   try {
     services.listen(0, '127.0.0.1'); await once(services, 'listening');
     await start();
-    const alice = peer('alice'), bob = peer('bob');
+    let alice = peer('alice');
+    const bob = peer('bob');
     await until(() => alice.state.phase === 'connected' && bob.state.phase === 'connected', 'Initial synchronization failed');
     assert.equal(alice.text.toString(), 'base'); assert.equal(bob.text.toString(), 'base');
     alice.text.insert(0, 'Alice:'); bob.text.insert(0, 'Bob:');
@@ -89,9 +99,12 @@ function peer(name, initialContent = 'base') {
     await until(() => alice.state.phase === 'reconnecting' && bob.state.phase === 'reconnecting', 'Disconnect was not detected');
     alice.text.insert(alice.text.length, ':offline-A'); bob.text.insert(bob.text.length, ':offline-B');
     assert.equal(alice.state.pending, true); assert.equal(bob.state.pending, true);
+    await until(() => !alice.state.persisting && !bob.state.persisting, 'Offline edits were not persisted locally');
+    alice.connection.dispose(); alice.doc.destroy();
+    alice = peer('alice', 'stale text from disk');
     await start();
     await until(() => alice.state.phase === 'connected' && bob.state.phase === 'connected'
-      && alice.text.toString() === bob.text.toString(), 'Restart recovery did not converge');
+      && !alice.state.pending && !bob.state.pending && alice.text.toString() === bob.text.toString(), 'Restart recovery did not converge');
     assert.ok(alice.text.toString().includes(':offline-A')); assert.ok(alice.text.toString().includes(':offline-B'));
     const history = await fetch(`http://127.0.0.1:${port}/api/projects/${project}/teams/${team}/workstreams/${stream}/documents/${documentIdForPath('src/main.ts')}/activity`, {
       headers: { Authorization: 'Bearer alice' },
@@ -101,7 +114,7 @@ function peer(name, initialContent = 'base') {
     revoked = true;
     await until(() => bob.state.phase === 'denied', 'Revoked member was not disconnected');
     assert.ok(bob.text.toString().includes(':offline-B'));
-    console.log('PASS: authenticated clients, simultaneous Yjs edits, restart/offline recovery, contributor records, and revocation.');
+    console.log('PASS: authenticated clients, simultaneous Yjs edits, desktop and server restart recovery, durable receipts, contributor records, and revocation.');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

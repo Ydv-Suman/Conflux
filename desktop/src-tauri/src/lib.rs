@@ -1,6 +1,7 @@
 mod repository;
 mod download;
 mod file_tree;
+mod document;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -8,6 +9,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(repository::RepositoryState::default())
         .invoke_handler(tauri::generate_handler![
+            document::document_load,
+            document::document_save,
             download::download_repository,
             file_tree::file_tree_snapshot,
             file_tree::file_tree_baseline,
