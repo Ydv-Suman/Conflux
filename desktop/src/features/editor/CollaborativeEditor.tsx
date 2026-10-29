@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js';
+import 'monaco-editor/esm/vs/basic-languages/monaco.contribution.js';
+import 'monaco-editor/esm/vs/language/json/monaco.contribution.js';
 // Vite resolves the worker query suffix; eslint-plugin-import does not.
 // eslint-disable-next-line import/no-unresolved
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+// eslint-disable-next-line import/no-unresolved
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
 import { COLLABORATION_WS_URL } from '../../config';
 import { getCollaborationToken } from '../auth/session';
 import { createAutoSave } from './autoSave';
+import { languageForPath } from './editorLanguage';
 import { connectDocument, documentIdForPath, type ConnectionPhase, type DocumentConnectionState } from './documentConnection';
 
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+self.MonacoEnvironment = { getWorker: (_moduleId, label) => label === 'json' ? new JsonWorker() : new EditorWorker() };
 
 export function CollaborativeEditor({
   projectId,
@@ -56,14 +61,17 @@ export function CollaborativeEditor({
 
     const doc = new Y.Doc();
     const text = doc.getText('content');
-    const extension = filePath.split('.').pop()?.toLowerCase();
-    const language = extension === 'ts' || extension === 'tsx' ? 'typescript' : extension === 'js' || extension === 'jsx' ? 'javascript' : extension === 'json' ? 'json' : 'plaintext';
+    const language = languageForPath(filePath, monaco.languages.getLanguages());
     const model = monaco.editor.createModel('', language);
     const editor = monaco.editor.create(container.current, {
       model,
       readOnly: true,
       automaticLayout: true,
       minimap: { enabled: false },
+      autoClosingBrackets: 'languageDefined',
+      autoClosingQuotes: 'languageDefined',
+      autoSurround: 'languageDefined',
+      autoIndent: 'full',
       fontSize,
       fontFamily,
       padding: { top: 16 },
@@ -122,6 +130,10 @@ export function CollaborativeEditor({
   }, [documentKey, projectId, workstreamId, teamId]);
 
   useEffect(() => { monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs'); }, [theme]);
+  useEffect(() => {
+    const model = editorRef.current?.getModel();
+    if (model) monaco.editor.setModelLanguage(model, languageForPath(filePath, monaco.languages.getLanguages()));
+  }, [filePath, documentKey]);
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize, fontFamily });
     let disposed = false;

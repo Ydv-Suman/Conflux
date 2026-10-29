@@ -287,7 +287,7 @@ function Workspace() {
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [panel, setPanel] = useState<'explorer' | 'projects' | 'profile' | 'settings' | 'invitations' | null>('projects');
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
   const [fontPreferences, setFontPreferences] = useState(readFontPreferences);
   useEffect(() => {
     document.documentElement.style.setProperty('--file-name-font-size', `${fontPreferences.fileNames}px`);
