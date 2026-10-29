@@ -3,8 +3,8 @@
 The Collaboration backend maintains an ordered file tree for each workstream.
 It supports adding files and folders, renaming/moving either, and deleting either.
 Folder renames and deletes include all descendants atomically. This API does not
-write files on users' computers or push Git commits. Desktop integration is the
-next step; the current desktop does not subscribe to this channel yet.
+write files on users' computers or push Git commits. The Rust/React desktop subscribes to this channel and applies operations to the
+active worktree. See [desktop file synchronization](../../desktop/FILE_SYNC.md).
 
 ## Connection and authentication
 
