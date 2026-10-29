@@ -15,6 +15,7 @@
     "prepare:icons": "node scripts/prepare-material-icons.cjs",
     "predev": "npm run prepare:icons",
     "prebuild": "npm run prepare:icons",
+    "prelint": "npm run prepare:icons",
     "pretest": "npm run prepare:icons"
   },
   "keywords": [],
