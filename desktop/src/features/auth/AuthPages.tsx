@@ -196,4 +196,3 @@ export function EmailStatus({ verify }: { verify: boolean }) {
     </section>
   </div>;
 }
-

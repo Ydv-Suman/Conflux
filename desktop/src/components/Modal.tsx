@@ -29,4 +29,3 @@ export function Modal({ title, children, onClose, compact = false }: { title: st
     </section>
   </div>;
 }
-

@@ -4,4 +4,3 @@ export function navigate(path: Route) {
   history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
-

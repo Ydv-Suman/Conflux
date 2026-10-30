@@ -42,4 +42,3 @@ export function TeamMemberList({ members, capabilities, busy, onRoleChange, onRe
     </article>;
   })}</div>;
 }
-

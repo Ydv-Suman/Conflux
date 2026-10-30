@@ -44,4 +44,3 @@ export function EntityForm({ initial, labels, busy, notice, onSubmit }: { initia
     <SubmitButton busy={busy}>{labels.submit}</SubmitButton>
   </form>;
 }
-
