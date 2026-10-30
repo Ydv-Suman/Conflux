@@ -158,11 +158,11 @@ export function CollaborativeEditor({
   }, [active]);
 
   return <section className="collaborative-editor flex h-full min-h-0 flex-col overflow-hidden bg-[#fffefa]">
-    <div className="collaboration-status">
+    {(connection.message || saveError || connection.persisting || saving || localDirty || connection.phase !== 'connected' || connection.pending) && <div className="collaboration-status">
       <span role="status">{connection.message || (saveError ? 'Local file save failed — retry Save locally.'
         : connection.persisting ? 'Saving recovery data…'
         : saving || localDirty ? 'Saving local file…'
-        : connection.phase === 'connected' ? (connection.pending ? 'Syncing… Waiting for server receipt.' : 'Saved locally and synced')
+        : connection.phase === 'connected' ? (connection.pending ? 'Syncing… Waiting for server receipt.' : '')
         : connection.phase === 'syncing' ? 'Synchronizing shared document…'
         : connection.phase === 'connecting' ? 'Connecting to collaboration…'
         : connection.pending ? 'Offline — edits saved on this device, waiting to sync.' : 'Offline — saved on this device.')}</span>
@@ -170,7 +170,7 @@ export function CollaborativeEditor({
         {connection.ready && (localDirty || saveError) && <button type="button" disabled={saving} onClick={() => saveRef.current?.()}>{saving ? 'Saving…' : 'Save locally'}</button>}
         {['reconnecting', 'denied', 'error'].includes(connection.phase) && <button type="button" onClick={() => connectionRef.current?.retry()}>Retry</button>}
       </div>
-    </div>
+    </div>}
     <div className="min-h-0 flex-1" ref={container} />
   </section>;
 }
