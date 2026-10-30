@@ -3,11 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const ts = require('typescript');
 const Y = require('yjs');
+const realSetTimeout = require('node:timers').setTimeout;
+const digest = crypto.subtle.digest.bind(crypto.subtle);
 require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, filename);
 const { connectDocument, documentIdForPath } = require('../src/features/editor/documentConnection.ts');
-const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(setImmediate); };
+let activity, pendingDigests, digestDelay;
+const settle = async () => {
+  const deadline = Date.now() + 5000;
+  let quietTurns = 0;
+  while (quietTurns < 2 || pendingDigests > 0) {
+    assert.ok(Date.now() < deadline, 'Document fixture did not settle within 5 seconds');
+    const previous = activity;
+    await new Promise(setImmediate);
+    quietTurns = activity === previous ? quietTurns + 1 : 0;
+  }
+};
 let sockets, history, participants, owner, messages, rejectToken, holdInitialization, holdReceipts;
 const originalSocket = global.WebSocket;
 const connections = [];
@@ -26,12 +38,13 @@ class Socket {
   addEventListener(name, callback) {
     this.listeners.set(name, [...(this.listeners.get(name) || []), callback]);
   }
-  emit(name, event) { for (const callback of this.listeners.get(name) || []) callback(event); }
+  emit(name, event) { activity++; for (const callback of this.listeners.get(name) || []) callback(event); }
   deliver(value) {
     queueMicrotask(() => { if (this.readyState === 1) this.emit('message', { data: typeof value === 'string' ? value : Uint8Array.from(value).buffer }); });
   }
   control(type) { this.deliver(JSON.stringify({ type })); }
   send(value) {
+    activity++;
     assert.equal(this.readyState, 1);
     const data = typeof value === 'string' ? value : Uint8Array.from(value);
     messages.push({ socket: this, data });
@@ -77,13 +90,23 @@ class Socket {
 }
 
 beforeEach((t) => {
+  activity = 0; pendingDigests = 0; digestDelay = 0;
+  // Keep real SHA-256, but track its worker completion independently of fake timers.
+  t.mock.method(crypto.subtle, 'digest', async (...args) => {
+    pendingDigests++; activity++;
+    try {
+      if (digestDelay) await new Promise((resolve) => realSetTimeout(resolve, digestDelay));
+      return await digest(...args);
+    } finally { pendingDigests--; activity++; }
+  });
   sockets = []; history = []; participants = new Set(); messages = [];
   owner = undefined; rejectToken = () => 0; holdInitialization = false; holdReceipts = false;
   global.WebSocket = Socket;
   t.mock.timers.enable({ apis: ['setTimeout'] });
 });
-afterEach(() => {
+afterEach(async () => {
   connections.splice(0).forEach((connection) => connection.dispose());
+  await settle();
   docs.splice(0).forEach((doc) => doc.destroy());
   global.WebSocket = originalSocket;
 });
@@ -92,7 +115,7 @@ function open(initialContent = 'base', getToken = async () => 'valid', storage =
   const doc = new Y.Doc(); docs.push(doc);
   const states = [];
   const connection = connectDocument({ doc, endpoint: 'ws://collaboration/doc', teamId: 'team-one', initialContent,
-    getToken, storage, onState: (state) => states.push(state) });
+    getToken, storage, onState: (state) => { activity++; states.push(state); } });
   connections.push(connection);
   return { doc, text: doc.getText('content'), states, connection };
 }
@@ -235,8 +258,7 @@ test('backpressure reconnects with the retained document rather than dropping up
 test('oversized updates stop safely and leave text available to save locally', async () => {
   const a = open(); await settle();
   a.text.insert(0, 'x'.repeat(2 * 1024 * 1024));
-  const deadline = Date.now() + 2000;
-  while (a.states.at(-1).phase !== 'error' && Date.now() < deadline) await new Promise(setImmediate);
+  await settle();
   assert.equal(a.states.at(-1).phase, 'error');
   assert.equal(a.states.at(-1).ready, true);
   assert.equal(a.states.at(-1).pending, true);
@@ -366,4 +388,18 @@ test('unknown receipts cannot clear pending updates and missing receipts trigger
   holdReceipts = false; t.mock.timers.tick(500); await settle();
   assert.equal(history.length, count);
   assert.equal(a.states.at(-1).pending, false);
+});
+
+test('settling waits for delayed real hashing before checking convergence and receipts', async () => {
+  digestDelay = 25;
+  const a = open(), b = open();
+  await settle();
+  assert.equal(a.states.at(-1).phase, 'connected');
+  assert.equal(b.text.toString(), 'base');
+  a.text.insert(0, 'Alice:'); b.text.insert(b.text.length, ':Bob');
+  await settle();
+  assert.equal(a.text.toString(), 'Alice:base:Bob');
+  assert.equal(a.text.toString(), b.text.toString());
+  assert.equal(a.states.at(-1).pending, false);
+  assert.equal(b.states.at(-1).pending, false);
 });
