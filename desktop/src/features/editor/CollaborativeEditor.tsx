@@ -10,7 +10,8 @@ import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
 import { COLLABORATION_WS_URL } from '../../config';
-import { getCollaborationToken } from '../auth/session';
+import { getCurrentUser, getCollaborationToken } from '../auth/session';
+import { nativeDocumentStorage } from './documentStorage';
 import { createAutoSave } from './autoSave';
 import { languageForPath } from './editorLanguage';
 import { connectDocument, documentIdForPath, type ConnectionPhase, type DocumentConnectionState } from './documentConnection';
@@ -50,10 +51,12 @@ export function CollaborativeEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const callbacks = useRef({ onSave, onDirtyChange, onConnectionChange });
   callbacks.current = { onSave, onDirtyChange, onConnectionChange };
-  const [connection, setConnection] = useState<DocumentConnectionState>({ phase: 'connecting', ready: false, pending: false, message: '' });
+  const [connection, setConnection] = useState<DocumentConnectionState>({ phase: 'connecting', ready: false, pending: false, persisting: false, message: '' });
   const connectionRef = useRef<ReturnType<typeof connectDocument> | null>(null);
   const saveRef = useRef<(() => void) | null>(null);
   const [saving, setSaving] = useState(false);
+  const [localDirty, setLocalDirty] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   const documentKey = stableId ?? documentIdForPath(filePath);
   useEffect(() => {
@@ -81,12 +84,16 @@ export function CollaborativeEditor({
     let savedContent = initialContent;
     let safeToSave = false;
     let pending = false;
-    const reportDirty = () => callbacks.current.onDirtyChange(pending || (safeToSave && text.toString() !== savedContent));
+    const reportDirty = () => {
+      const dirty = safeToSave && text.toString() !== savedContent;
+      setLocalDirty(dirty);
+      callbacks.current.onDirtyChange(pending || dirty);
+    };
     const autosave = createAutoSave({
       initialContent, getContent: () => text.toString(),
       write: (content, previousContent) => callbacks.current.onSave(content, previousContent),
-      onSaved: (content) => { savedContent = content; reportDirty(); },
-      onError: () => { /* The workspace shows the error; the tab stays dirty. */ },
+      onSaved: (content) => { savedContent = content; setSaveError(false); reportDirty(); },
+      onError: () => { setSaveError(true); },
       onSaving: setSaving,
     });
     const documentChanged = () => { reportDirty(); autosave.changed(); };
@@ -97,6 +104,7 @@ export function CollaborativeEditor({
     const endpoint = `${COLLABORATION_WS_URL}/ws/projects/${encodeURIComponent(projectId)}/workstreams/${encodeURIComponent(workstreamId)}/documents/${documentId}`;
     let disposed = false;
     const connection = connectDocument({ doc, endpoint, teamId, initialContent, getToken: getCollaborationToken,
+      storage: nativeDocumentStorage(endpoint, teamId, getCurrentUser()!.id),
       onState: (state) => {
         if (disposed) return;
         safeToSave = state.ready;
@@ -150,13 +158,19 @@ export function CollaborativeEditor({
   }, [active]);
 
   return <section className="collaborative-editor flex h-full min-h-0 flex-col overflow-hidden bg-[#fffefa]">
-    {connection.phase !== 'connected' && <div className="collaboration-status">
-      <span role="status">{connection.message || (connection.phase === 'syncing' ? 'Synchronizing shared document…' : connection.phase === 'connecting' ? 'Connecting to collaboration…' : 'Reconnecting… Keep this tab open to preserve pending edits.')}</span>
+    <div className="collaboration-status">
+      <span role="status">{connection.message || (saveError ? 'Local file save failed — retry Save locally.'
+        : connection.persisting ? 'Saving recovery data…'
+        : saving || localDirty ? 'Saving local file…'
+        : connection.phase === 'connected' ? (connection.pending ? 'Syncing… Waiting for server receipt.' : 'Saved locally and synced')
+        : connection.phase === 'syncing' ? 'Synchronizing shared document…'
+        : connection.phase === 'connecting' ? 'Connecting to collaboration…'
+        : connection.pending ? 'Offline — edits saved on this device, waiting to sync.' : 'Offline — saved on this device.')}</span>
       <div className="collaboration-actions">
-        {connection.ready && <button type="button" disabled={saving} onClick={() => saveRef.current?.()}>{saving ? 'Saving…' : 'Save locally'}</button>}
+        {connection.ready && (localDirty || saveError) && <button type="button" disabled={saving} onClick={() => saveRef.current?.()}>{saving ? 'Saving…' : 'Save locally'}</button>}
         {['reconnecting', 'denied', 'error'].includes(connection.phase) && <button type="button" onClick={() => connectionRef.current?.retry()}>Retry</button>}
       </div>
-    </div>}
+    </div>
     <div className="min-h-0 flex-1" ref={container} />
   </section>;
 }

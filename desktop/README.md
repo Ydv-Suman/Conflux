@@ -23,7 +23,7 @@ The collaborative editor connects to `VITE_COLLABORATION_WS_URL` (default `ws://
 
 Run `npm start` to use local repository features. Open a project and team, select Explorer below the Conflux logo, and choose **Select local folder**. Conflux validates the Git repository, shows its local files, and saves the active file with `Cmd+S` or `Ctrl+S`. Browser-only development at `http://localhost:5173` cannot access local folders.
 
-Device-only repository mappings, the last selected project/workstream, and the last opened file are stored in `conflux.sqlite3` under the operating system's application-data directory. Repository contents are not copied into SQLite or uploaded to Conflux.
+Device-only repository mappings, the last selected project/workstream, and the last opened file are stored in `conflux.sqlite3` under the operating system's application-data directory. Opened collaborative documents also store their Yjs recovery state and pending updates in SQLite. Their updates are sent to Collaboration Service; unrelated repository files are not copied into this recovery store.
 
 The Projects area lists every project connected to the signed-in user. Opening a project reveals all assigned teams; member details and workstreams load only for teams the user belongs to. Project and team controls are capability-aware for usability, while Identity and Workspace Services remain responsible for every authorization decision.
 
@@ -155,8 +155,10 @@ private-provider authentication requires a manual test with configured credentia
 
 ## Secured collaborative editing
 
-Requires the authenticated Collaboration Service protocol described in
-`services/collaboration-service/README.md`. The desktop sends the team ID and
+Requires the authenticated Collaboration Service protocol and opt-in durable
+receipts introduced in backend commit `a9c846f` (merge/deploy that backend change
+alongside this desktop update). A server without receipts leaves edits pending;
+connection status never substitutes for a persistence receipt. The desktop sends the team ID and
 in-memory access token as the first WebSocket text message. Tokens are never placed
 in WebSocket URLs or local storage. Expired tokens are refreshed once per failed
 connection; tabs reuse a token that another tab has already refreshed.
@@ -166,20 +168,36 @@ Existing documents replay their persisted Yjs history, including intentionally
 empty documents. Editing and local saves stay disabled until the first replay
 completes, so an empty loading editor cannot overwrite a local file.
 
-The right side of the file-tab bar shows a green Connected dot or red Disconnected dot for the active file in both themes. After the first synchronization,
-disconnected editing remains available. The same Y.Doc stays alive across bounded
-reconnect retries, merges replayed updates, and sends its retained state back to
-the server. **Save locally** saves the current text to this device; it does not
-publish a Git commit. **Retry** reconnects without recreating the document.
-Membership denial stops automatic retries and makes the editor read-only while
-preserving its contents for a local save.
+The right side of the file-tab bar shows a green Connected dot or red Disconnected
+dot for the active file. The editor status separately shows local recovery saving,
+local file saving, pending server receipts, saved/synced, offline, and errors.
+**Saved locally and synced** requires successful local file saving, durable recovery
+storage, and acknowledgement of all pending updates. Connection alone does not
+establish persistence.
 
-Unsaved or offline pending edits keep the tab's dirty indicator active. Closing a
-changed tab or switching workspaces asks before discarding it. Keep the workspace
-open until reconnection completes: offline CRDT state is held in memory, not stored
-across app crashes or restarts. A local text save is a backup, not an offline CRDT
-journal. The server has no per-edit acknowledgement; “Connected” means the
-session synchronized, not that every subsequent edit has a persistence receipt.
+Each document's Yjs snapshot and exact pending update bytes are persisted together
+in native SQLite before transmission. Records are scoped by server/document URL,
+team, and signed-in user; stable document IDs retain recovery state across renames.
+Reopening a document restores the snapshot and resends its pending bytes after
+server replay. The desktop opts into backend receipts and clears a payload only
+after its SHA-256 receipt arrives. Lost receipts retry the same bytes, including
+after restart, without producing duplicate server history. Snapshot and outbox
+writes are serialized, including across closing and reopening a tab.
+
+After a document has synchronized once, its recovered contents remain editable
+while offline. Reopen other previously edited files in Explorer to recover their
+pending changes; only the last active file is automatically reopened. A new file
+still waits for server initialization. Membership denial stops automatic retries
+and makes the editor read-only while preserving contents for a local save.
+
+A storage error stops network sends and leaves the tab dirty. Keep the tab open,
+use **Save locally** to preserve the text, fix the storage issue, then **Retry**.
+A crash while the status still says **Saving recovery data…** can lose edits whose
+local write has not completed. Recovery records have a 64 MiB limit per document;
+exceeding it fails visibly rather than discarding pending updates. There is no
+automatic pruning or CRDT compaction yet. **Save locally** writes the text file;
+it does not publish a Git commit. Close/workspace-change prompts remain conservative
+while edits are unsaved or awaiting acknowledgement.
 
 `npm test` covers actual Yjs convergence with a deterministic relay fixture, concurrent
 first opens, empty-document replay, offline edits, token refresh, access denial,
@@ -187,7 +205,7 @@ backpressure, disposal, and size limits. To test the production desktop transpor
 against the actual Java relay, first package Collaboration Service with
 `./mvnw package` in its service directory, then run `npm run test:collaboration`
 here. This starts temporary Identity/Workspace HTTP fixtures and a real Java relay,
-connects two Yjs clients, restarts the relay to check durable recovery, and verifies
+connects two Yjs clients, destroys and recreates one client from persisted recovery data, restarts the relay, waits for durable receipts, and verifies
 contributor records and membership revocation. Set `COLLABORATION_JAR` to use another
 packaged relay. This check does not log in through the native desktop UI.
 

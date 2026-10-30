@@ -28,7 +28,7 @@ shared tree or ignore it, then retry. Open files autosave locally after 600 ms w
 loses focus, including received collaborative edits. Saving waits for document
 initialization, serializes writes, and preserves the dirty indicator on failure.
 A changed active root or independently modified disk file stops the write.
-Existing file content continues to use the editor's document/Yjs channel; this does not synchronize arbitrary external text
+Existing file content uses the editor's document/Yjs channel, with SQLite recovery state and pending updates retained until durable server acknowledgement; this does not synchronize arbitrary external text
 edits or binary content, commit to Git, or push to the remote repository.
 
 Incoming creates never overwrite differing local content. Deletions move local
