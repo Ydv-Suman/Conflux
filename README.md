@@ -6,7 +6,7 @@ Conflux is a collaborative desktop IDE designed for software teams working with 
 
 Instead of giving every developer an isolated AI coding assistant, Conflux creates a shared project with collaborative **workstreams** where team members and specialized AI agents work on independent features without disrupting one another.
 
-Developers can edit code together in real time, see each other's cursors and changes, communicate through team and workstream chat, use a per-workstream shared terminal, assign tasks to shared AI role profiles, review AI-generated changes, and approve consequential actions before they enter the canonical workspace.
+The product vision includes editing code together in real time, seeing each other's cursors and changes, communicating through team and workstream chat, using a per-workstream shared terminal, assigning tasks to shared AI role profiles, reviewing AI-generated changes, and approving consequential actions before they enter the canonical workspace. These capabilities are at different stages of implementation; see [Status](#status).
 
 The source repository remains on developers' machines. Conflux does not require the repository itself to be hosted by Conflux.
 
@@ -575,6 +575,34 @@ Version control
 ```
 
 A development session may contain thousands of collaborative edits before the team creates a meaningful Git checkpoint.
+
+---
+
+# Ownership and Contribution History (Planned)
+
+Conflux will distinguish **who authored a change**, **who submitted an update**, **who owns the task or module**, **who created a checkpoint**, and **who reviewed it**. Editing a file does not automatically assign its ownership, and creating a shared checkpoint does not make its creator the author of every included change.
+
+The current document journal records authenticated update submitters, server timestamps, and document sequences. Its activity API is not an authorship ledger: initialization or reconnect snapshots can contain other people's changes. Accurate attribution, contributor diffs, ownership reports, and contribution dashboards are not implemented yet.
+
+The next implementation priority is to define and validate attribution for one shared file before live cursors or contribution reporting. Original edit attribution must survive concurrent editing, offline work, retries, reconnects, restarts, and file renames. Imported or historical content with unverified authorship must remain explicitly unknown. Corrections must preserve the original record and an audit trail; shared work and future agent-generated changes need explicit provenance.
+
+### Planned visibility
+
+| Information | Who can access it |
+| --- | --- |
+| Team-wide contribution dashboard, member comparisons, and ownership reports | Admins and team leads within their authorized team, projects, and workstreams |
+| A member's own contribution records and correction requests | That member within their authorized scope; admins and team leads in scope |
+| Ordinary shared file history and debugging diffs | Collaborators with access to that document; no restricted member analytics |
+
+Identity supplies centrally managed capabilities; backend APIs enforce them on every request, including direct links and any future exports. Session leadership alone does not grant report access. Role or membership revocation must remove report access and clear restricted views and caches. These are planned permissions, not guarantees provided by the existing submitter activity endpoint.
+
+### Planned lead/admin experience
+
+**Workstream → Changes & History** will expose file diffs, attribution evidence, and later checkpoint comparisons. A **Contributions** view will filter by member and date range and link every measure to its supporting records: accepted work, attributed changes, reviews, tests, confirmed regression investigations, and documented collaboration. Task, review, checkpoint, and agent measures become available only when their underlying workflows exist.
+
+Measures must state their definition, scope, time window, and data coverage. Retries and replay must not inflate counts; missing records must not be presented as zero contribution. Keystrokes, online time, lines changed, and commit counts do not establish overall value. Conflux will not generate a universal contribution percentage, automatic performance score, or employment recommendation. Reports can support human review alongside task difficulty, role expectations, shared work, and the member's explanation. The last editor is not automatically responsible for a regression; that requires reproducible evidence tied to an exact version.
+
+See [the attribution architecture](docs/architecture.md#contribution-attribution-and-ownership-planned) for the implementation contract, access boundaries, and first acceptance scenario.
 
 ---
 
@@ -1961,7 +1989,7 @@ These should be treated as normal distributed-system states rather than exceptio
 
 # Development Strategy
 
-The first milestone should contain **no AI**.
+The first milestone should contain **no AI**. The milestones below describe the overall product progression; the current next step is reliable contribution attribution and file history, followed by live cursors, shared Git checkpoints, terminals, and agents. Advanced contribution reporting depends on the relevant task, review, and checkpoint workflows.
 
 ## Milestone 1 - Multiplayer Editor
 
@@ -2003,7 +2031,7 @@ Both documents converge
 Both local files persist correctly
 ```
 
-Also implement remote cursors and reconnect synchronization.
+Reconnect synchronization is implemented. Validate attribution and file history next, then add remote cursors and selections.
 
 If this layer is unreliable, AI agents will only make the system harder to debug.
 
@@ -2323,7 +2351,9 @@ and human authority.
 
 **Architecture / Early Development**
 
-The initial engineering focus is the local-first multiplayer editor and workspace synchronization layer.
+Authenticated collaborative editing, durable backend receipts, desktop SQLite recovery and retries, and team presence are implemented. The manual two-user desktop checks passed as reported by the user on 2026-11-05.
+
+The next milestone is reliable edit attribution and file history, including backend permissions for restricted contribution and ownership reporting. Live cursors, shared Git checkpoints, contribution dashboards, shared terminals, and AI workflows remain planned. The existing activity API identifies update submitters, not verified original authors.
 
 AI functionality will be introduced only after realtime human collaboration is reliable.
 
