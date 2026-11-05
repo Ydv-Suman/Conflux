@@ -2,6 +2,9 @@
 
 Tauri 2 desktop authentication client built with TypeScript, Vite, and Tailwind CSS.
 
+See [Native runtime structure](src-tauri/README.md) for the Rust module layout,
+ownership boundaries, and extension guidelines.
+
 ## Requirements
 
 - Node.js 22
@@ -169,11 +172,12 @@ empty documents. Editing and local saves stay disabled until the first replay
 completes, so an empty loading editor cannot overwrite a local file.
 
 The right side of the file-tab bar shows a green Connected dot or red Disconnected
-dot for the active file. The editor status separately shows local recovery saving,
-local file saving, pending server receipts, saved/synced, offline, and errors.
-**Saved locally and synced** requires successful local file saving, durable recovery
-storage, and acknowledgement of all pending updates. Connection alone does not
-establish persistence.
+dot for the active file. Routine local saves, recovery writes, and server receipts
+run silently without showing a banner or **Save locally** button on each edit.
+The banner remains available for connection setup, offline status, and errors,
+with **Save locally** available there when local changes need saving. Unsaved tab
+indicators and close guards still track pending changes. Connection alone does
+not establish persistence.
 
 Each document's Yjs snapshot and exact pending update bytes are persisted together
 in native SQLite before transmission. Records are scoped by server/document URL,
@@ -192,7 +196,7 @@ and makes the editor read-only while preserving contents for a local save.
 
 A storage error stops network sends and leaves the tab dirty. Keep the tab open,
 use **Save locally** to preserve the text, fix the storage issue, then **Retry**.
-A crash while the status still says **Saving recovery data…** can lose edits whose
+A crash during a background recovery write can lose edits whose
 local write has not completed. Recovery records have a 64 MiB limit per document;
 exceeding it fails visibly rather than discarding pending updates. There is no
 automatic pruning or CRDT compaction yet. **Save locally** writes the text file;

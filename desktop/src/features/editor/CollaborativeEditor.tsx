@@ -158,11 +158,8 @@ export function CollaborativeEditor({
   }, [active]);
 
   return <section className="collaborative-editor flex h-full min-h-0 flex-col overflow-hidden bg-[#fffefa]">
-    {(connection.message || saveError || connection.persisting || saving || localDirty || connection.phase !== 'connected' || connection.pending) && <div className="collaboration-status">
+    {(connection.message || saveError || connection.phase !== 'connected') && <div className="collaboration-status">
       <span role="status">{connection.message || (saveError ? 'Local file save failed — retry Save locally.'
-        : connection.persisting ? 'Saving recovery data…'
-        : saving || localDirty ? 'Saving local file…'
-        : connection.phase === 'connected' ? (connection.pending ? 'Syncing… Waiting for server receipt.' : '')
         : connection.phase === 'syncing' ? 'Synchronizing shared document…'
         : connection.phase === 'connecting' ? 'Connecting to collaboration…'
         : connection.pending ? 'Offline — edits saved on this device, waiting to sync.' : 'Offline — saved on this device.')}</span>
