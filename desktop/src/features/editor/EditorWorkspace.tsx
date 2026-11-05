@@ -2,8 +2,10 @@ import { useEffect, useReducer, useRef } from 'react';
 import { CollaborativeEditor } from './CollaborativeEditor';
 import { FileTabs, filePanelId, fileTabId } from './FileTabs';
 import { editorTabsReducer, type EditorFile } from './editorTabs';
+import type { TeamPresenceState } from '../teams/presenceConnection';
 
-export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, fontSize, fontFamily, onSave, onActivate, onEmpty, onDirtyStateChange, entries, treeReady, onDirtyPathsChange }: {
+export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, fontSize, fontFamily, onSave, onActivate, onEmpty, onDirtyStateChange, entries, treeReady, onDirtyPathsChange, presence, onRetryPresence }: {
+  presence: TeamPresenceState | null; onRetryPresence: () => void;
   entries: { id: string; path: string }[]; treeReady: boolean; onDirtyPathsChange: (paths: string[]) => void;
   file: EditorFile; projectId: string; workstreamId: string; teamId: string; theme: 'light' | 'dark'; fontSize: number; fontFamily: string;
   onSave: (path: string, content: string, previousContent: string) => Promise<void>; onActivate: (path: string) => Promise<void>; onEmpty: () => void; onDirtyStateChange: (dirty: boolean) => void;
@@ -26,7 +28,7 @@ export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, 
     return () => window.removeEventListener('beforeunload', warnBeforeClosing);
   }, [tabs.files]);
   return <div className="flex h-full min-h-0 flex-col">
-    <FileTabs files={tabs.files} activePath={tabs.activePath} onSelect={(path) => dispatch({ type: 'select', path })} onClose={(item) => {
+    <FileTabs onRetryPresence={onRetryPresence} presence={presence} files={tabs.files} activePath={tabs.activePath} onSelect={(path) => dispatch({ type: 'select', path })} onClose={(item) => {
       if (!item.dirty || window.confirm(`Close ${item.path}? Unsaved or unsynchronized changes in this tab may be lost.`)) dispatch({ type: 'close', path: item.path });
     }} />
     <div className="min-h-0 flex-1">{tabs.files.map((item) => <div className="h-full" hidden={item.path !== tabs.activePath} role="tabpanel" id={filePanelId(item.path)} aria-labelledby={fileTabId(item.path)} key={item.documentId ?? item.path}>

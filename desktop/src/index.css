@@ -414,9 +414,11 @@ html[data-theme="dark"] .invitation-panel { --invitation-border: #454a52; --invi
 .file-tab-select:focus-visible, .file-tab-close:focus-visible { outline: 2px solid var(--tab-accent); outline-offset: -2px; }
 html[data-theme="dark"] .editor-tab-bar { --tab-surface: #17191c; --tab-active: #1d2024; --tab-text: #bdc5cf; --tab-active-text: #f2f5f8; --tab-border: #363d46; --tab-accent: #9cbce7; --tab-hover: #3a424d; }
 .editor-connection { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; padding: 0 .75rem; border-left: 1px solid var(--tab-border); color: var(--tab-text); font-size: .75rem; white-space: nowrap; }
-.editor-connection-dot { width: .5rem; height: .5rem; flex-shrink: 0; border-radius: 50%; background: #c93636; }
+.editor-connection-dot { width: .5rem; height: .5rem; flex-shrink: 0; border-radius: 50%; background: #7c838c; }
+button.editor-connection:hover { background: var(--tab-hover); }
+button.editor-connection:focus-visible { outline: 2px solid var(--tab-accent); outline-offset: -2px; }
 .editor-connection.is-connected .editor-connection-dot { background: #258341; }
-html[data-theme="dark"] .editor-connection-dot { background: #f77979; }
+html[data-theme="dark"] .editor-connection-dot { background: #8e97a4; }
 html[data-theme="dark"] .editor-connection.is-connected .editor-connection-dot { background: #63d287; }
 
 .collaboration-status { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .4rem .75rem; font-size: .75rem; line-height: 1.5; color: #614511; background: #fff1cc; }

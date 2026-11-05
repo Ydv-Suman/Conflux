@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import type { EditorFile } from './editorTabs';
+import { TeamPresenceIndicator } from '../teams/TeamPresenceIndicator';
+import type { TeamPresenceState } from '../teams/presenceConnection';
 
 export const fileTabId = (path: string) => `file-tab-${encodeURIComponent(path)}`;
 export const filePanelId = (path: string) => `file-panel-${encodeURIComponent(path)}`;
 
-export function FileTabs({ files, activePath, onSelect, onClose }: {
+export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence }: {
+  presence: TeamPresenceState | null; onRetryPresence: () => void;
   files: EditorFile[]; activePath: string | null; onSelect: (path: string) => void; onClose: (file: EditorFile) => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
-  const connected = files.find((file) => file.path === activePath)?.connectionPhase === 'connected';
   useEffect(() => {
     bar.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activePath]);
@@ -27,9 +29,6 @@ export function FileTabs({ files, activePath, onSelect, onClose }: {
       <button className="file-tab-close" type="button" aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
     </div>)}
   </div>
-    <span className={`editor-connection ${connected ? 'is-connected' : 'is-disconnected'}`} role="status" title="Collaboration connection for the active file">
-      <span className="editor-connection-dot" aria-hidden="true" />
-      {connected ? 'Connected' : 'Disconnected'}
-    </span>
+    <TeamPresenceIndicator key={presence?.teamId} presence={presence} onRetry={onRetryPresence} />
   </div>;
 }

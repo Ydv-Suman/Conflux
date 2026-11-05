@@ -171,8 +171,24 @@ Existing documents replay their persisted Yjs history, including intentionally
 empty documents. Editing and local saves stay disabled until the first replay
 completes, so an empty loading editor cannot overwrite a local file.
 
-The right side of the file-tab bar shows a green Connected dot or red Disconnected
-dot for the active file. Routine local saves, recovery writes, and server receipts
+The right side of the file-tab bar shows a green dot and the number of online
+members in the selected team, including you. Each member counts once, even with
+multiple windows or files open. Presence is team-wide across projects and is
+independent of document synchronization. Admins and team leads can click the count
+to see the online names and roles; roster access comes from the server. Other
+members see only the count. A gray dot shows connecting/offline status when the
+count is unknown, and stale counts and rosters are cleared on disconnect.
+Hover **Offline** for the failure reason and click it to retry presence without
+closing editor tabs. If authentication remains rejected, sign in again.
+
+This requires Collaboration Service's `/ws/teams/{teamId}/presence` endpoint.
+One presence connection stays open for the selected team even with no editor tabs,
+sends a heartbeat every 10 seconds, and closes when the team changes or the user
+logs out. The same person can count once in each team when using separate windows.
+Clean disconnects remove presence promptly; interrupted connections expire on the
+backend after roughly 35 seconds. Presence means connected, not actively typing.
+
+Routine local saves, recovery writes, and server receipts
 run silently without showing a banner or **Save locally** button on each edit.
 The banner remains available for connection setup, offline status, and errors,
 with **Save locally** available there when local changes need saving. Unsaved tab

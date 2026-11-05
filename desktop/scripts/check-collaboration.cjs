@@ -12,6 +12,7 @@ require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileMo
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, filename);
 const { connectDocument, documentIdForPath } = require('../src/features/editor/documentConnection.ts');
+const { connectTeamPresence } = require('../src/features/teams/presenceConnection.ts');
 const jar = path.resolve(process.env.COLLABORATION_JAR || path.join(__dirname, '../../services/collaboration-service/target/collaboration-service-0.0.1-SNAPSHOT.jar'));
 if (!fs.existsSync(jar)) throw new Error('Package Collaboration Service first with ./mvnw package, or set COLLABORATION_JAR.');
 const project = '00000000-0000-4000-8000-000000000001';
@@ -27,7 +28,7 @@ const services = http.createServer((request, response) => {
   if (!actors[actor]) { response.writeHead(401); response.end('{}'); return; }
   if (revoked && actor === 'bob') { response.writeHead(403); response.end('{}'); return; }
   if (request.url === `/api/teams/${team}/capabilities/me`) {
-    response.end(JSON.stringify({ teamId: team, userId: actors[actor], capabilities: ['JOIN_WORKSTREAM', 'EDIT_DOCUMENT'] }));
+    response.end(JSON.stringify({ teamId: team, userId: actors[actor], role: actor === 'alice' ? 'ADMIN' : 'DEVELOPER', capabilities: ['JOIN_WORKSTREAM', 'EDIT_DOCUMENT'] }));
   } else if (request.url === `/api/projects/${project}/teams/${team}/workstreams/${stream}`) {
     response.end(JSON.stringify({ projectId: project, teamId: team, workstreamId: stream, repositoryReady: true, status: 'ACTIVE' }));
   } else { response.writeHead(404); response.end('{}'); }
@@ -84,10 +85,27 @@ function peer(name, initialContent = 'base') {
   connections.push(connection);
   return peer;
 }
+function presencePeer(name) {
+  const peer = { state: undefined };
+  peer.connection = connectTeamPresence({
+    endpoint: `ws://127.0.0.1:${port}/ws/teams/${team}/presence`, teamId: team,
+    getToken: async () => name, onState: state => { peer.state = state; },
+  });
+  connections.push(peer.connection);
+  return peer;
+}
 (async () => {
   try {
     services.listen(0, '127.0.0.1'); await once(services, 'listening');
     await start();
+    const adminPresence = presencePeer('alice'), memberPresence = presencePeer('bob');
+    await until(() => adminPresence.state?.count === 2 && memberPresence.state?.count === 2, 'Team presence did not connect for both roles');
+    assert.deepEqual(new Set(adminPresence.state.userIds), new Set(Object.values(actors)));
+    assert.equal(memberPresence.state.userIds, undefined);
+    const secondMemberWindow = presencePeer('bob');
+    await until(() => secondMemberWindow.state?.phase === 'online', 'Second member window did not connect');
+    assert.equal(secondMemberWindow.state.count, 2);
+    secondMemberWindow.connection.dispose();
     let alice = peer('alice');
     const bob = peer('bob');
     await until(() => alice.state.phase === 'connected' && bob.state.phase === 'connected', 'Initial synchronization failed');
@@ -103,6 +121,8 @@ function peer(name, initialContent = 'base') {
     alice.connection.dispose(); alice.doc.destroy();
     alice = peer('alice', 'stale text from disk');
     await start();
+    await until(() => adminPresence.state?.phase === 'online' && memberPresence.state?.phase === 'online'
+      && adminPresence.state.count === 2 && memberPresence.state.count === 2, 'Team presence did not recover after restart');
     await until(() => alice.state.phase === 'connected' && bob.state.phase === 'connected'
       && !alice.state.pending && !bob.state.pending && alice.text.toString() === bob.text.toString(), 'Restart recovery did not converge');
     assert.ok(alice.text.toString().includes(':offline-A')); assert.ok(alice.text.toString().includes(':offline-B'));
@@ -113,8 +133,9 @@ function peer(name, initialContent = 'base') {
     assert.ok(history.items.some((entry) => entry.actorId === actors.bob));
     revoked = true;
     await until(() => bob.state.phase === 'denied', 'Revoked member was not disconnected');
+    await until(() => memberPresence.state.phase === 'offline' && adminPresence.state.count === 1, 'Revoked member remained in presence');
     assert.ok(bob.text.toString().includes(':offline-B'));
-    console.log('PASS: authenticated clients, simultaneous Yjs edits, desktop and server restart recovery, durable receipts, contributor records, and revocation.');
+    console.log('PASS: authenticated clients, Yjs edits, restart recovery, durable receipts, contributor records, admin/member presence, duplicate windows, and revocation.');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
