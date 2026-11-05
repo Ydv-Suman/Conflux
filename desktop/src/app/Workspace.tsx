@@ -46,6 +46,7 @@ import { useWorkspaceSelection } from './useWorkspaceSelection';
 
 import { NoticeView, primaryClass } from '../components/FormControls';
 import { TeamMemberList } from '../features/teams/TeamMemberList';
+import { useTeamPresence } from '../features/teams/useTeamPresence';
 import { messageFor } from './messages';
 import { navigate } from './navigation';
 import type { Confirmation, Dialog, Panel, RequestError } from './workspaceTypes';
@@ -84,6 +85,8 @@ export function Workspace() {
   const { projects, setProjects, teams, setTeams, project, projectTeams, team, identityTeam,
     members, setMembers, capabilities, workstreams, setWorkstreams, activeWorkstream, setActiveWorkstream,
     loading, notice, setNotice, load } = useWorkspaceSelection(canLeaveWorkspace, onOpenShared);
+  const [leavingSession, setLeavingSession] = useState(false);
+  const { presence, retry: retryPresence } = useTeamPresence(leavingSession ? undefined : identityTeam?.teamId);
   const { repository, setRepository, openFile, setOpenFile, repositoryLoading, repositoryError, setRepositoryError,
     setRepositoryAttempt, remoteRepository, setRemoteRepository, remoteError, setRemoteError, remoteLoading, saveRepositoryFile
   } = useWorkspaceRepository({ project, activeWorkstream, loading, busy, setActiveWorkstream, setWorkstreams, setRequestError });
@@ -140,9 +143,10 @@ export function Workspace() {
   const assignableTeams = teams.filter((item) => ['ADMIN', 'TEAM_LEAD'].includes(item.role) && !projectTeams.some((assigned) => assigned.teamId === item.teamId));
 
   const openProfile = async () => { setPanel('profile'); try { setProfile(await authenticatedRequest<UserProfile>('/api/users/me', 'GET')); } catch (error) { setNotice({ message: messageFor(error, 'Unable to load profile.') }); } };
-  const signOut = async () => { try { await logout(); navigate('/'); } catch { setNotice({ message: 'Logout could not be confirmed. Try again while connected.' }); } };
+  const signOut = async () => { setLeavingSession(true); try { await logout(); navigate('/'); } catch { setNotice({ message: 'Logout could not be confirmed. Try again while connected.' }); } };
   const deleteAccount = async () => {
     await authenticatedRequest('/api/users/me', 'DELETE');
+    setLeavingSession(true);
     try { await logout(); } catch { /* The deleted account no longer needs a server logout. */ }
     navigate('/');
   };
@@ -203,7 +207,7 @@ export function Workspace() {
 
   const workspaceContent = loading ? <p className="p-7" role="status">Loading team workspace…</p> : activeWorkstream && project ? <div className="flex h-full flex-col">
 
-    <div className="min-h-0 flex-1">{openFile && repository && !repositoryError && openFile.documentId && isRepositoryReady(activeWorkstream) ? <EditorWorkspace key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} teamId={activeWorkstream.teamId} file={openFile} entries={treeSync.entries} treeReady={treeSync.manifestReady} onDirtyPathsChange={(paths) => { dirtyPaths.current = paths; }} theme={theme} fontSize={fontPreferences.editor} fontFamily={fontFamilyCss(EDITOR_FONT_FAMILIES, fontPreferences.editorFamily)} onDirtyStateChange={(dirty) => { pendingWorkspace.current = dirty; }} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
+    <div className="min-h-0 flex-1">{openFile && repository && !repositoryError && openFile.documentId && isRepositoryReady(activeWorkstream) ? <EditorWorkspace onRetryPresence={retryPresence} presence={presence} key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} teamId={activeWorkstream.teamId} file={openFile} entries={treeSync.entries} treeReady={treeSync.manifestReady} onDirtyPathsChange={(paths) => { dirtyPaths.current = paths; }} theme={theme} fontSize={fontPreferences.editor} fontFamily={fontFamilyCss(EDITOR_FONT_FAMILIES, fontPreferences.editorFamily)} onDirtyStateChange={(dirty) => { pendingWorkspace.current = dirty; }} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
 
   </div> : !project ? <section className="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center">
     <div>
