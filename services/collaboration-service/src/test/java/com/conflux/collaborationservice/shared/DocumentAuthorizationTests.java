@@ -82,6 +82,47 @@ class DocumentAuthorizationTests {
         assertTrue(requests.isEmpty());
     }
 
+    @Test void presenceCountsEveryMemberButOnlyAdminsAndTeamLeadsCanSeeTheRoster() {
+        String base = membership;
+        for (String role : List.of("ADMIN", "TEAM_LEAD", "SENIOR_DEVELOPER", "DEVELOPER", "VIEWER")) {
+            requests.clear();
+            membership = base.replace("\"capabilities\":", "\"role\":\"" + role + "\",\"capabilities\":");
+            var member = authorization.authorizePresence(credentials).block();
+            assertEquals(actor, member.userId());
+            assertEquals(role.equals("ADMIN") || role.equals("TEAM_LEAD"), member.canViewRoster());
+            assertEquals(1, requests.size());
+            assertEquals("/api/teams/" + team + "/capabilities/me", requests.getFirst().url().getPath());
+            assertEquals("Bearer verified-by-identity", requests.getFirst().headers().getFirst("Authorization"));
+        }
+    }
+
+    @Test void presenceRejectsMissingMembershipWrongTeamAndUnknownRole() {
+        String base = membership.replace("\"capabilities\":", "\"role\":\"ADMIN\",\"capabilities\":");
+        for (String invalid : List.of(membership, base.replace(team.toString(), UUID.randomUUID().toString()),
+                base.replace("ADMIN", "UNKNOWN"), base.replace("\"" + actor + "\"", "null"))) {
+            membership = invalid;
+            assertEquals(4403, assertThrows(DocumentAuthorization.Denied.class,
+                    () -> authorization.authorizePresence(credentials).block()).code);
+        }
+        membership = "";
+        assertThrows(org.springframework.core.codec.DecodingException.class,
+                () -> authorization.authorizePresence(credentials).block());
+    }
+
+    @Test void presenceFailsClosedOnInvalidCredentialsOrIdentityFailure() {
+        for (var invalid : List.of(new DocumentAuthorization.Credentials(null, "token"),
+                new DocumentAuthorization.Credentials(team, ""), new DocumentAuthorization.Credentials(team, "a".repeat(8193)))) {
+            assertEquals(4401, assertThrows(DocumentAuthorization.Denied.class,
+                    () -> authorization.authorizePresence(invalid).block()).code);
+        }
+        assertTrue(requests.isEmpty());
+        for (var status : List.of(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN, HttpStatus.SERVICE_UNAVAILABLE)) {
+            identityStatus = status;
+            assertEquals(status == HttpStatus.UNAUTHORIZED ? 4401 : status == HttpStatus.FORBIDDEN ? 4403 : 1013,
+                    assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizePresence(credentials).block()).code);
+        }
+    }
+
     private void denied(int code) {
         assertEquals(code, assertThrows(DocumentAuthorization.Denied.class,
                 () -> authorization.authorize(document, credentials).block()).code);

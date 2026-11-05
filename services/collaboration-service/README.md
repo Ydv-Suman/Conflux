@@ -113,6 +113,7 @@ com.conflux.collaborationservice
 ├── config      # WebSocket routing and transport configuration
 ├── document    # Document relay and contributor activity
 ├── filetree    # File/folder operations, state, and synchronization
+├── presence    # Team online counts and restricted online rosters
 └── shared      # Authorization, document identifiers, and durable journals
 ```
 
@@ -130,3 +131,12 @@ are persisted before broadcast and replayed after reconnecting.
 See [the file-tree protocol](FILE_TREE_PROTOCOL.md) for message formats, initialization,
 stable document IDs, limits, and desktop integration requirements. The desktop
 watcher and Explorer are not connected to this channel yet.
+
+## Team presence
+
+`/ws/teams/{teamId}/presence` provides live, team-scoped online counts. Admins and
+team leads also receive the unique online member IDs. Identity verifies membership
+and roster access; Workspace Service requires no changes. See
+[the presence protocol](PRESENCE_PROTOCOL.md) for authentication, heartbeat,
+multi-team counting, and frontend integration. This endpoint is backend-only;
+the desktop indicator has not been changed to consume it.
