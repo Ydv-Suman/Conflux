@@ -2,6 +2,7 @@ package com.conflux.collaborationservice.config;
 
 import com.conflux.collaborationservice.document.DocumentRelayHandler;
 import com.conflux.collaborationservice.filetree.FileTreeHandler;
+import com.conflux.collaborationservice.presence.TeamPresenceHandler;
 import com.conflux.collaborationservice.shared.DocumentJournal;
 import java.util.Map;
 
@@ -26,9 +27,10 @@ class WebSocketConfig {
 			"/ws/projects/*/workstreams/*/documents/*";
 
 	@Bean
-	HandlerMapping webSocketHandlerMapping(DocumentRelayHandler handler, FileTreeHandler files) {
+	HandlerMapping webSocketHandlerMapping(DocumentRelayHandler handler, FileTreeHandler files, TeamPresenceHandler presence) {
 		return new SimpleUrlHandlerMapping(Map.of(DOCUMENT_ENDPOINT_PATTERN, handler,
-				"/ws/projects/*/workstreams/*/files", files), -1);
+				"/ws/projects/*/workstreams/*/files", files,
+				"/ws/teams/*/presence", presence), -1);
 	}
 
 	@Bean

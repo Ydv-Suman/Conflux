@@ -27,10 +27,7 @@ public class DocumentAuthorization {
                 || credentials.token().isBlank() || credentials.token().length() > 8192) {
             return Mono.error(new Denied(4401));
         }
-        var membership = identity.get().uri("/api/teams/{id}/capabilities/me", credentials.teamId())
-                .headers(headers -> headers.setBearerAuth(credentials.token()))
-                .header("Accept", "application/vnd.conflux+json;v=1.0")
-                .retrieve().bodyToMono(Membership.class);
+        var membership = membership(credentials);
         var stream = workspace.get().uri("/api/projects/{project}/teams/{team}/workstreams/{stream}",
                         document.projectId(), credentials.teamId(), document.workstreamId())
                 .headers(headers -> headers.setBearerAuth(credentials.token()))
@@ -57,10 +54,35 @@ public class DocumentAuthorization {
                                 : error.getStatusCode().is4xxClientError() ? 4403 : 1013));
     }
 
+    public Mono<PresenceMember> authorizePresence(Credentials credentials) {
+        if (credentials == null || credentials.teamId() == null || credentials.token() == null
+                || credentials.token().isBlank() || credentials.token().length() > 8192) {
+            return Mono.error(new Denied(4401));
+        }
+        return membership(credentials).map(member -> {
+            if (member.userId() == null || !credentials.teamId().equals(member.teamId())
+                    || member.role() == null || !Set.of("ADMIN", "TEAM_LEAD", "SENIOR_DEVELOPER", "DEVELOPER", "VIEWER").contains(member.role())) {
+                throw new Denied(4403);
+            }
+            return new PresenceMember(member.userId(), Set.of("ADMIN", "TEAM_LEAD").contains(member.role()));
+        }).switchIfEmpty(Mono.error(new Denied(4403))).timeout(Duration.ofSeconds(3))
+                .onErrorMap(WebClientResponseException.class, error ->
+                        new Denied(error.getStatusCode().value() == 401 ? 4401
+                                : error.getStatusCode().is4xxClientError() ? 4403 : 1013));
+    }
+
+    private Mono<Membership> membership(Credentials credentials) {
+        return identity.get().uri("/api/teams/{id}/capabilities/me", credentials.teamId())
+                .headers(headers -> headers.setBearerAuth(credentials.token()))
+                .header("Accept", "application/vnd.conflux+json;v=1.0")
+                .retrieve().bodyToMono(Membership.class);
+    }
+
+    public record PresenceMember(UUID userId, boolean canViewRoster) { }
     public record Credentials(UUID teamId, String token) {
         @Override public String toString() { return "Credentials[redacted]"; }
     }
-    record Membership(UUID teamId, UUID userId, Set<String> capabilities) { }
+    record Membership(UUID teamId, UUID userId, String role, Set<String> capabilities) { }
     record Workstream(UUID projectId, UUID teamId, UUID workstreamId, boolean repositoryReady, String status) { }
     public static final class Denied extends RuntimeException {
         public final int code;
