@@ -1,0 +1,25 @@
+.file-history-trigger { flex-shrink: 0; margin: 0 8px; padding: 5px 10px; border: 1px solid var(--border-color, #9995); border-radius: 6px; font-size: 12px; }
+.file-history { min-width: 0; }
+.file-history-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.file-history-toolbar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-history button { border: 1px solid #8884; border-radius: 6px; padding: 7px 12px; }
+.file-history button:disabled { opacity: .45; cursor: default; }
+.file-history button:focus-visible, .file-history-trigger:focus-visible { outline: 2px solid #598573; outline-offset: 2px; }
+.file-history-note { font-size: 12px; opacity: .7; margin: 8px 0 16px; }
+.file-history-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); border: 1px solid #8884; border-radius: 8px; overflow: hidden; }
+.file-history-layout aside { max-height: 52vh; overflow-y: auto; border-right: 1px solid #8884; }
+.file-history-versions { margin: 0; padding: 0; list-style: none; }
+.file-history-versions button { display: flex; flex-direction: column; gap: 6px; width: 100%; border: 0; border-radius: 0; border-bottom: 1px solid #8883; text-align: left; padding: 12px; font-size: 12px; overflow-wrap: anywhere; }
+.file-history-versions button[aria-pressed="true"] { background: #59857322; box-shadow: inset 3px 0 #598573; }
+.file-history-version { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.file-history-version time { font-weight: 400; opacity: .7; }
+.file-history-versions .file-history-note { margin: 0; }
+.file-history-comparison { min-width: 0; }
+.file-history-comparison > p { padding: 16px; }
+.file-history-comparison-label { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #8883; }
+.file-history-diff { height: 46vh; min-height: 240px; }
+.file-history-pagination { display: flex; justify-content: space-between; gap: 16px; margin-top: 16px; }
+@media (max-width: 720px) {
+  .file-history-layout { grid-template-columns: minmax(0, 1fr); }
+  .file-history-layout aside { max-height: 160px; border-right: 0; border-bottom: 1px solid #8884; }
+}

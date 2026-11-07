@@ -145,6 +145,24 @@ class DocumentAuthorizationTests {
         assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeContributions(document, credentials).block());
     }
 
+    @Test void historyAllowsReadOnlyMembersButStillRequiresExactScopeAndCurrentAccess() {
+        membership = membership.replace("JOIN_WORKSTREAM", "VIEW_PROJECT").replace(
+                "\"capabilities\":", "\"role\":\"VIEWER\",\"capabilities\":");
+        workstream = workstream.replace("ACTIVE", "ARCHIVED");
+        assertEquals(actor, authorization.authorizeHistory(document, credentials).block());
+        assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeContributions(document, credentials).block());
+        String valid = workstream;
+        for (UUID id : List.of(project, team, stream)) {
+            workstream = valid.replace(id.toString(), UUID.randomUUID().toString());
+            assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeHistory(document, credentials).block());
+        }
+        workstream = valid;
+        membership = membership.replace("VIEW_PROJECT", "UNRELATED");
+        assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeHistory(document, credentials).block());
+        identityStatus = HttpStatus.FORBIDDEN;
+        assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeHistory(document, credentials).block());
+    }
+
     private void denied(int code) {
         assertEquals(code, assertThrows(DocumentAuthorization.Denied.class,
                 () -> authorization.authorize(document, credentials).block()).code);

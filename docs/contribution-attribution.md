@@ -158,8 +158,9 @@ restarts, and token refresh cannot create new operation IDs for the same edit.
 
 ## File history and permissions
 
-First expose ordinary document history with bounded pagination, exact version
-references, before/after diffs, provenance status, and explicit unknowns. A rename
+Ordinary document history is implemented with bounded sequence pagination, exact
+version references, read-only before/after diffs, provenance status, and explicit
+unknowns. Open a shared file and click History beside the editor tabs. A rename
 keeps the stable document ID. Deletion retains history subject to access and
 retention policy; recreating a path is not automatically the same document.
 
@@ -193,7 +194,7 @@ Then implement, in order:
 1. Trusted validation and adversarial fixtures using real desktop Yjs payloads.
 2. Versioned journal records, writer bindings, atomic receipts, and restart replay.
 3. Negotiated socket protocol and desktop pending-envelope persistence.
-4. Backend history/access rules, self-records, corrections, and file-history UI.
+4. Shared history/access rules and file-history UI are implemented; member self-records and audited corrections follow.
 5. Full acceptance checks, followed by cursors and shared checkpoints. Add report
    aggregates only when their source task/review/checkpoint workflows exist.
 

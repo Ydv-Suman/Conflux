@@ -23,14 +23,20 @@ public class DocumentAuthorization {
     }
 
     public Mono<UUID> authorize(DocumentId document, Credentials credentials) {
-        return authorize(document, credentials, false);
+        return authorize(document, credentials, Access.EDIT);
     }
 
     public Mono<UUID> authorizeContributions(DocumentId document, Credentials credentials) {
-        return authorize(document, credentials, true);
+        return authorize(document, credentials, Access.CONTRIBUTIONS);
     }
 
-    private Mono<UUID> authorize(DocumentId document, Credentials credentials, boolean reporting) {
+    public Mono<UUID> authorizeHistory(DocumentId document, Credentials credentials) {
+        return authorize(document, credentials, Access.HISTORY);
+    }
+
+    private enum Access { EDIT, HISTORY, CONTRIBUTIONS }
+
+    private Mono<UUID> authorize(DocumentId document, Credentials credentials, Access access) {
         if (credentials == null || credentials.teamId() == null || credentials.token() == null
                 || credentials.token().isBlank() || credentials.token().length() > 8192) {
             return Mono.error(new Denied(4401));
@@ -47,13 +53,13 @@ public class DocumentAuthorization {
             Workstream workstream = result.getT2();
             if (member.userId() == null || !credentials.teamId().equals(member.teamId())
                     || member.capabilities() == null
-                    || (reporting ? !member.capabilities().contains("VIEW_PROJECT")
-                        || !Set.of("ADMIN", "TEAM_LEAD").contains(member.role() == null ? "" : member.role())
-                        : !member.capabilities().containsAll(Set.of("JOIN_WORKSTREAM", "EDIT_DOCUMENT")))
+                    || (access == Access.EDIT ? !member.capabilities().containsAll(Set.of("JOIN_WORKSTREAM", "EDIT_DOCUMENT"))
+                        : !member.capabilities().contains("VIEW_PROJECT"))
+                    || (access == Access.CONTRIBUTIONS && !Set.of("ADMIN", "TEAM_LEAD").contains(member.role() == null ? "" : member.role()))
                     || !document.projectId().equals(workstream.projectId())
                     || !document.workstreamId().equals(workstream.workstreamId())
                     || !credentials.teamId().equals(workstream.teamId())
-                    || (!reporting && (!workstream.repositoryReady()
+                    || (access == Access.EDIT && (!workstream.repositoryReady()
                         || !Set.of("CREATED", "ACTIVE", "REVIEWING", "READY_TO_MERGE", "BLOCKED", "CONFLICT")
                             .contains(workstream.status() == null ? "" : workstream.status())))) {
                 throw new Denied(4403);

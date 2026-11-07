@@ -1,4 +1,3 @@
-import * as Y from 'yjs';
 import { COLLABORATION_WS_URL } from '../../config';
 import { authenticatedServiceRequest } from '../auth/session';
 
@@ -27,13 +26,7 @@ export function getReport(scope: Scope, filters: Filters, offset = 0) {
 export const getEvidence = (scope: Scope, change: Change) => authenticatedServiceRequest<Evidence>(baseUrl,
   `${path(scope)}/documents/${encodeURIComponent(change.documentId)}/changes/${change.sequence}`, 'GET');
 
-export function snapshotText(snapshot: string): string {
-  const doc = new Y.Doc({ gc: false });
-  try {
-    Y.applyUpdate(doc, Uint8Array.from(atob(snapshot), character => character.charCodeAt(0)));
-    return doc.getText('content').toString();
-  } finally { doc.destroy(); }
-}
+export { snapshotText } from '../editor/documentSnapshot';
 
 export function dateWindow(from: string, through: string) {
   const start = new Date(`${from}T00:00:00.000Z`);

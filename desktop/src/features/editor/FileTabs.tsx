@@ -6,7 +6,8 @@ import type { TeamPresenceState } from '../teams/presenceConnection';
 export const fileTabId = (path: string) => `file-tab-${encodeURIComponent(path)}`;
 export const filePanelId = (path: string) => `file-panel-${encodeURIComponent(path)}`;
 
-export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence }: {
+export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence, onHistory }: {
+  onHistory?: () => void;
   presence: TeamPresenceState | null; onRetryPresence: () => void;
   files: EditorFile[]; activePath: string | null; onSelect: (path: string) => void; onClose: (file: EditorFile) => void;
 }) {
@@ -29,6 +30,7 @@ export function FileTabs({ files, activePath, onSelect, onClose, presence, onRet
       <button className="file-tab-close" type="button" aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
     </div>)}
   </div>
+    {onHistory && <button type="button" className="file-history-trigger" onClick={onHistory}>History</button>}
     <TeamPresenceIndicator key={presence?.teamId} presence={presence} onRetry={onRetryPresence} />
   </div>;
 }

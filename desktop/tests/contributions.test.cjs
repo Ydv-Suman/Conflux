@@ -16,6 +16,7 @@ function load(file, mocks) {
 }
 const calls = [];
 const api = load('api.ts', {
+  '../editor/documentSnapshot': load('../editor/documentSnapshot.ts', {}),
   '../../config': { COLLABORATION_WS_URL: 'wss://collab.example' },
   '../auth/session': { authenticatedServiceRequest: async (...args) => { calls.push(args); return {}; } },
 });
