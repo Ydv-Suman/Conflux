@@ -37,7 +37,7 @@ services:
     build:
       context: ../../services/identity-service
     environment:
-      DB_URL: jdbc:postgresql://database:5432/identityDB
+      DB_URL: jdbc:postgresql://identity-database:5432/identityDB
       DB_USERNAME: postgres
       DB_PASSWORD: ${POSTGRES_PASSWORD:-identity123}
       JWT_ISSUER: ${JWT_ISSUER:-http://localhost:8080}
@@ -65,7 +65,7 @@ services:
       - ../../services/identity-service/secrets/jwt-public.pem:/run/secrets/conflux/jwt-public.pem:ro
       - ../../services/identity-service/secrets/jwt-private.pem:/run/secrets/conflux/jwt-private.pem:ro
     depends_on:
-      database:
+      identity-database:
         condition: service_healthy
 
   workspace-service:

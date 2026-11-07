@@ -15,8 +15,12 @@ public class ReportingWebConfig implements WebFluxConfigurer {
         if (origins.isEmpty() || origins.contains("*")) throw new IllegalArgumentException("Explicit CORS origins required");
     }
     @Override public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/projects/{project}/teams/{team}/workstreams/{stream}/contributions/**").allowedOrigins(origins.toArray(String[]::new))
-                .allowedMethods("GET").allowedHeaders("Authorization", "Content-Type", "Accept")
-                .allowCredentials(false).maxAge(300);
+        for (String path : List.of(
+                "/api/projects/{project}/teams/{team}/workstreams/{stream}/contributions/**",
+                "/api/projects/{project}/teams/{team}/workstreams/{stream}/documents/{document}/history/**")) {
+            registry.addMapping(path).allowedOrigins(origins.toArray(String[]::new))
+                    .allowedMethods("GET").allowedHeaders("Authorization", "Content-Type", "Accept")
+                    .allowCredentials(false).maxAge(300);
+        }
     }
 }
