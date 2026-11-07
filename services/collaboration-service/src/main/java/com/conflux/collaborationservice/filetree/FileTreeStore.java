@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-final class FileTreeStore {
+public final class FileTreeStore {
     static final int MAX_NODES = 5000;
     static final int MAX_CONTENT = 256 * 1024;
     static final int MAX_HISTORY_BYTES = 8 * 1024 * 1024;
@@ -39,11 +39,22 @@ final class FileTreeStore {
     static final class State {
         final DocumentId key;
         Map<String, Entry> entries = new LinkedHashMap<>();
+        final Map<String, Entry> knownEntries = new LinkedHashMap<>();
         final Set<String> usedIds = new HashSet<>();
         final Map<UUID, Event> operations = new LinkedHashMap<>();
         int bytes;
         State(DocumentId key) { this.key = key; }
         int version() { return operations.size(); }
+    }
+
+    public record Document(String id, String path, boolean deleted) { }
+
+    public List<Document> documents(UUID projectId, UUID workstreamId) throws IOException {
+        State state = load(key(projectId, workstreamId));
+        Set<String> active = new HashSet<>();
+        state.entries.values().forEach(entry -> active.add(entry.id()));
+        return state.knownEntries.values().stream().filter(entry -> entry.kind() == Kind.FILE)
+                .map(entry -> new Document(entry.id(), entry.path(), !active.contains(entry.id()))).toList();
     }
 
     static final class Conflict extends RuntimeException {
@@ -88,6 +99,7 @@ final class FileTreeStore {
     private void commit(State state, Map<String, Entry> entries, Event event, int bytes) {
         state.entries = entries;
         entries.values().forEach(entry -> state.usedIds.add(entry.id()));
+        entries.values().forEach(entry -> state.knownEntries.put(entry.id(), entry));
         state.operations.put(event.command().operationId(), event);
         state.bytes += bytes;
     }

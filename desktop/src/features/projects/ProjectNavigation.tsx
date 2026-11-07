@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { PanelHeader } from '../../components/PanelHeader';
 import type { Project, ProjectTeam } from './api';
 
@@ -5,10 +6,11 @@ type Props = {
   projects: Project[]; project: Project | null; projectTeams: ProjectTeam[];
   team: ProjectTeam | null; openShared: boolean; disabled: boolean;
   onSelect: (projectId: string | null, teamId: string | null, openShared?: boolean) => Promise<void>;
+  teamActions?: ReactNode;
   onCreate: () => void; onClose: () => void;
 };
 
-export function ProjectNavigation({ projects, project, projectTeams, team, openShared, disabled, onSelect, onCreate, onClose }: Props) {
+export function ProjectNavigation({ projects, project, projectTeams, team, openShared, disabled, onSelect, onCreate, onClose, teamActions }: Props) {
   return <nav className="team-sidebar sidebar-content" aria-label="Projects">
 
     <PanelHeader title={openShared ? 'Choose team' : 'Projects'} onClose={onClose}>
@@ -48,14 +50,16 @@ export function ProjectNavigation({ projects, project, projectTeams, team, openS
 
           {!projectTeams.length && <p className="sidebar-muted px-2 text-xs">No teams assigned yet.</p>}
 
-          {projectTeams.map((itemTeam) => <button key={itemTeam.teamId}
+          {projectTeams.map((itemTeam) => <div key={itemTeam.teamId}><button
             className={`team-section-link project-team-switch ${itemTeam.teamId === team?.teamId ? 'is-active' : ''}`}
             type="button" disabled={disabled}
             onClick={() => void onSelect(item.projectId, itemTeam.teamId, openShared)}>
 
             <span className="truncate">{itemTeam.name || 'Unnamed team'}</span>
 
-          </button>)}
+          </button>
+          {itemTeam.teamId === team?.teamId && teamActions && <div className="ml-4 border-l border-[#d8d6ce] pl-2">{teamActions}</div>}
+          </div>)}
 
         </div>}
 

@@ -1,6 +1,8 @@
 package com.conflux.collaborationservice.document;
 
 import com.conflux.collaborationservice.shared.DocumentAuthorization;
+import com.conflux.collaborationservice.shared.AttributedDocumentStore;
+import java.util.Base64;
 import com.conflux.collaborationservice.shared.DocumentId;
 import com.conflux.collaborationservice.shared.DocumentJournal;
 import java.io.IOException;
@@ -33,12 +35,14 @@ public final class DocumentRelayHandler implements WebSocketHandler {
     private final DocumentAuthorization authorization;
     private final DocumentJournal journal;
     private final ObjectMapper json;
+    private final AttributedDocumentStore attributedStore;
     private final Map<DocumentId, Room> rooms = new LinkedHashMap<>();
 
-    DocumentRelayHandler(DocumentAuthorization authorization, DocumentJournal journal, ObjectMapper json) {
+    DocumentRelayHandler(DocumentAuthorization authorization, DocumentJournal journal, AttributedDocumentStore attributedStore, ObjectMapper json) {
         this.authorization = authorization;
         this.journal = journal;
         this.json = json;
+        this.attributedStore = attributedStore;
     }
 
     @Override public Mono<Void> handle(WebSocketSession session) {
@@ -57,10 +61,18 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                         catch (RuntimeException invalid) { return close(session, new DocumentAuthorization.Denied(4401)); }
                         var credentials = new DocumentAuthorization.Credentials(handshake.teamId(), handshake.token());
                         return authorization.authorize(document, credentials)
-                                .flatMap(actor -> Mono.fromCallable(() -> join(document, session.getId(), actor, Boolean.TRUE.equals(handshake.acknowledgements())))
+                                .flatMap(actor -> Mono.fromCallable(() -> join(document, session.getId(), actor, Boolean.TRUE.equals(handshake.acknowledgements()), handshake.protocol(), handshake.registrationId(), Boolean.TRUE.equals(handshake.migrateLegacy())))
                                         .subscribeOn(Schedulers.boundedElastic()))
                                 .flatMap(connection -> {
                                     Mono<Void> receive = incoming.skip(1).concatMap(update -> Mono.defer(() -> {
+                                        if (connection.room.attributed) {
+                                            if (!update.text) return Mono.error(new IllegalArgumentException());
+                                            return authorization.authorize(document, credentials).flatMap(actor -> {
+                                                if (!actor.equals(connection.actor)) return Mono.error(new DocumentAuthorization.Denied(4403));
+                                                return Mono.fromRunnable(() -> connection.room.publishAttributed(connection, update.bytes))
+                                                        .subscribeOn(Schedulers.boundedElastic());
+                                            });
+                                        }
                                         if (update.text || update.bytes.length == 0) return Mono.error(new IllegalArgumentException());
                                         return Mono.fromRunnable(() -> connection.room.publish(connection, update.bytes))
                                                 .subscribeOn(Schedulers.boundedElastic());
@@ -88,21 +100,36 @@ public final class DocumentRelayHandler implements WebSocketHandler {
     private Mono<Void> close(WebSocketSession session, Throwable error) {
         // Netty ends receive before flushing close; cancellation must not release that in-flight frame.
         return Mono.defer(() -> session.close(new CloseStatus(
-                error instanceof DocumentAuthorization.Denied denied ? denied.code
+                error instanceof LegacyRecoveryRequired ? 4410 : error instanceof DocumentAuthorization.Denied denied ? denied.code
                         : error instanceof IllegalArgumentException ? 1008 : 1013,
-                error instanceof DocumentAuthorization.Denied ? "Authentication or team access required"
+                error instanceof LegacyRecoveryRequired ? "Legacy recovery requires review" : error instanceof DocumentAuthorization.Denied ? "Authentication or team access required"
                         : error instanceof IllegalArgumentException ? "Invalid document message"
                         : "Collaboration unavailable; reconnect to recover"))).cache();
     }
 
-    private synchronized Connection join(DocumentId document, String id, UUID actor, boolean acknowledgements) throws IOException {
+    private synchronized Connection join(DocumentId document, String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId, boolean migrateLegacy) throws IOException {
+        if (protocol != null && protocol != 1 && protocol != 2) throw new IllegalArgumentException();
+        if (Integer.valueOf(2).equals(protocol) && registrationId == null) throw new IllegalArgumentException();
         Room room = rooms.get(document);
         if (room == null) {
             if (rooms.size() >= 32) throw new IOException("Active document limit reached");
-            room = new Room(document, journal.read(document));
+            var history = journal.read(document);
+            boolean migrationBlocked = false;
+            if (!history.isEmpty() && !journal.attributed(document) && migrateLegacy && Integer.valueOf(2).equals(protocol)) {
+                try {
+                    attributedStore.migrateLegacy(document, actor);
+                    history = journal.read(document);
+                } catch (DocumentUpdateValidator.Rejected unsupported) { migrationBlocked = true; }
+            }
+            boolean attributed = journal.attributed(document) || (history.isEmpty() && Integer.valueOf(2).equals(protocol));
+            room = new Room(document, history, attributed, migrationBlocked);
             rooms.put(document, room);
         }
-        return room.join(id, actor, acknowledgements);
+        try { return room.join(id, actor, acknowledgements, protocol, registrationId); }
+        catch (IOException | RuntimeException failure) {
+            if (room.clients.isEmpty()) rooms.remove(document, room);
+            throw failure;
+        }
     }
 
     private synchronized void leave(DocumentId document, Connection connection) {
@@ -119,17 +146,36 @@ public final class DocumentRelayHandler implements WebSocketHandler {
         private final DocumentId document;
         private final List<DocumentJournal.Entry> history;
         private final Map<String, Connection> clients = new LinkedHashMap<>();
+        private final boolean attributed;
+        private final boolean migrationBlocked;
         private String initializer;
         private long initializationStarted;
 
-        Room(DocumentId document, List<DocumentJournal.Entry> history) {
+        Room(DocumentId document, List<DocumentJournal.Entry> history, boolean attributed, boolean migrationBlocked) {
+            this.migrationBlocked = migrationBlocked;
+            this.attributed = attributed;
             this.document = document;
             this.history = new ArrayList<>(history);
         }
 
-        synchronized Connection join(String id, UUID actor, boolean acknowledgements) throws IOException {
+        synchronized Connection join(String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId) throws IOException {
+            if (attributed && !Integer.valueOf(2).equals(protocol)) {
+                if (history.stream().anyMatch(entry -> entry.attribution() != null && entry.attribution().importedWriters() != null))
+                    throw new LegacyRecoveryRequired();
+                throw new IllegalArgumentException("Attribution protocol required");
+            }
             if (clients.size() >= 32) throw new IOException("Document participant limit reached");
             List<Frame> replay = new ArrayList<>();
+            if (Integer.valueOf(2).equals(protocol)) {
+                var firstAttributed = history.stream().filter(entry -> entry.attribution() != null).findFirst();
+                String initial = !attributed || firstAttributed.isEmpty() ? "" : ",\"initialOperationId\":\"" + firstAttributed.get().attribution().operationId() + "\"";
+                replay.add(textFrame("{\"type\":\"protocol\",\"version\":" + (attributed ? 2 : 1) + initial + ",\"migrationBlocked\":" + migrationBlocked + "}"));
+            }
+            if (attributed) {
+                var binding = attributedStore.register(document, actor, registrationId);
+                replay.add(textFrame("{\"type\":\"writer\",\"requestId\":\"" + registrationId
+                        + "\",\"writerId\":" + binding.writerId() + "}"));
+            }
             history.forEach(entry -> replay.add(new Frame(false, entry.update())));
             if (!history.isEmpty()) replay.add(Frame.SYNCED);
             else if (initializer == null) {
@@ -137,7 +183,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                 initializationStarted = System.nanoTime();
                 replay.add(Frame.INITIALIZE);
             }
-            Connection connection = new Connection(this, id, actor, replay, acknowledgements);
+            Connection connection = new Connection(this, id, actor, replay, acknowledgements || attributed);
             clients.put(id, connection);
             return connection;
         }
@@ -164,6 +210,37 @@ public final class DocumentRelayHandler implements WebSocketHandler {
             });
             initializer = null;
             sender.acknowledge(history.getLast());
+        }
+
+        synchronized void publishAttributed(Connection sender, byte[] frame) {
+            if (!clients.containsKey(sender.id)) throw new IllegalArgumentException();
+            Edit edit = json.readValue(frame, Edit.class);
+            if (edit == null || !("edit".equals(edit.type()) || "seed".equals(edit.type()))
+                    || edit.operationId() == null || edit.writerId() == null || edit.update() == null
+                    || edit.update().length() > 2_796_204) throw new IllegalArgumentException();
+            byte[] bytes = Base64.getDecoder().decode(edit.update());
+            if (!Base64.getEncoder().encodeToString(bytes).equals(edit.update())) throw new IllegalArgumentException();
+            boolean initializing = history.isEmpty();
+            if (initializing && (!sender.id.equals(initializer) || !"seed".equals(edit.type()))) throw new IllegalArgumentException();
+            DocumentJournal.Entry saved;
+            try {
+                saved = "seed".equals(edit.type())
+                        ? attributedStore.seed(document, sender.actor, edit.writerId(), edit.operationId(), bytes)
+                        : attributedStore.submit(document, sender.actor, edit.writerId(), edit.operationId(), bytes);
+            } catch (IOException error) {
+                clients.values().forEach(client -> client.failure.tryEmitError(error));
+                throw new IllegalStateException("Cannot persist attributed update", error);
+            }
+            if (saved.sequence() > history.size()) {
+                if (saved.sequence() != history.size() + 1) throw new IllegalStateException("Stale room history");
+                history.add(saved);
+                clients.values().forEach(client -> {
+                    if (!client.id.equals(sender.id)) client.emit(new Frame(false, saved.update()));
+                    if (initializing) client.emit(Frame.SYNCED);
+                });
+                initializer = null;
+            }
+            sender.acknowledge(saved);
         }
 
         synchronized void checkInitializer(Connection connection) {
@@ -208,8 +285,10 @@ public final class DocumentRelayHandler implements WebSocketHandler {
             if (!acknowledgements) return;
             try {
                 String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(entry.update()));
-                emit(new Frame(true, ("{\"type\":\"ack\",\"sha256\":\"" + hash
-                        + "\",\"sequence\":" + entry.sequence() + "}").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                String identity = entry.attribution() == null ? "" : ",\"operationId\":\"" + entry.attribution().operationId()
+                        + "\",\"writerId\":" + entry.attribution().writerId();
+                emit(textFrame("{\"type\":\"ack\",\"sha256\":\"" + hash
+                        + "\",\"sequence\":" + entry.sequence() + identity + "}"));
             } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
         }
         void emit(Frame frame) {
@@ -219,7 +298,13 @@ public final class DocumentRelayHandler implements WebSocketHandler {
         }
     }
 
-    private record Handshake(UUID teamId, String token, Boolean acknowledgements) {
+    private static final class LegacyRecoveryRequired extends IllegalStateException { }
+
+    private record Edit(String type, UUID operationId, Long writerId, String update) { }
+
+    private static Frame textFrame(String value) { return new Frame(true, value.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+
+    private record Handshake(UUID teamId, String token, Boolean acknowledgements, Integer protocol, UUID registrationId, Boolean migrateLegacy) {
         @Override public String toString() { return "Handshake[redacted]"; }
     }
 

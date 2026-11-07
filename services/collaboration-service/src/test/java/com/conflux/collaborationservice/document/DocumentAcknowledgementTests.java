@@ -111,7 +111,7 @@ class DocumentAcknowledgementTests {
     private DocumentRelayHandler handler(DocumentJournal journal) {
         var authorization = mock(DocumentAuthorization.class);
         when(authorization.authorize(any(), any())).thenReturn(Mono.just(actor));
-        return new DocumentRelayHandler(authorization, journal, new ObjectMapper());
+        return new DocumentRelayHandler(authorization, journal, mock(com.conflux.collaborationservice.shared.AttributedDocumentStore.class), new ObjectMapper());
     }
     private Peer peer(DocumentJournal journal, boolean receipts) throws Exception { return new Peer(handler(journal), receipts); }
 
