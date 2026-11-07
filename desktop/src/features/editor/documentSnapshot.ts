@@ -7,4 +7,3 @@ export function snapshotText(snapshot: string): string {
     return doc.getText('content').toString();
   } finally { doc.destroy(); }
 }
-
