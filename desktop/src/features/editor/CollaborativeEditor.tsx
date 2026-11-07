@@ -62,7 +62,7 @@ export function CollaborativeEditor({
   useEffect(() => {
     if (!container.current) return;
 
-    const doc = new Y.Doc();
+    const doc = new Y.Doc({ gc: false });
     const text = doc.getText('content');
     const language = languageForPath(filePath, monaco.languages.getLanguages());
     const model = monaco.editor.createModel('', language);
@@ -110,7 +110,7 @@ export function CollaborativeEditor({
         safeToSave = state.ready;
         autosave.setReady(state.ready);
         pending = state.pending;
-        editor.updateOptions({ readOnly: !state.ready || state.phase === 'denied' || state.phase === 'error' });
+        editor.updateOptions({ readOnly: !state.ready || state.writable === false || state.phase === 'denied' || state.phase === 'error' });
         setConnection(state);
         callbacks.current.onConnectionChange(state.phase);
         reportDirty();

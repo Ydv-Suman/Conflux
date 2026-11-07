@@ -123,6 +123,28 @@ class DocumentAuthorizationTests {
         }
     }
 
+    @Test void contributionsRequireCurrentAdminOrLeadAndExactScopeEvenForArchivedWorkstreams() {
+        String base = membership.replace("JOIN_WORKSTREAM", "VIEW_PROJECT");
+        for (String role : List.of("ADMIN", "TEAM_LEAD", "DEVELOPER", "SENIOR_DEVELOPER", "VIEWER", "UNKNOWN")) {
+            membership = base.replace("\"capabilities\":", "\"role\":\"" + role + "\",\"capabilities\":");
+            if (role.equals("ADMIN") || role.equals("TEAM_LEAD"))
+                assertEquals(actor, authorization.authorizeContributions(document, credentials).block());
+            else assertEquals(4403, assertThrows(DocumentAuthorization.Denied.class,
+                    () -> authorization.authorizeContributions(document, credentials).block()).code);
+        }
+        membership = base.replace("\"capabilities\":", "\"role\":\"ADMIN\",\"capabilities\":");
+        workstream = workstream.replace("ACTIVE", "ARCHIVED");
+        assertEquals(actor, authorization.authorizeContributions(document, credentials).block());
+        String valid = workstream;
+        for (UUID id : List.of(team, project, stream)) {
+            workstream = valid.replace(id.toString(), UUID.randomUUID().toString());
+            assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeContributions(document, credentials).block());
+        }
+        workstream = valid;
+        membership = membership.replace(team.toString(), UUID.randomUUID().toString());
+        assertThrows(DocumentAuthorization.Denied.class, () -> authorization.authorizeContributions(document, credentials).block());
+    }
+
     private void denied(int code) {
         assertEquals(code, assertThrows(DocumentAuthorization.Denied.class,
                 () -> authorization.authorize(document, credentials).block()).code);

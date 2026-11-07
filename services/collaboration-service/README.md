@@ -5,6 +5,9 @@ Authenticated, durable binary document relay for one shared team workstream. Ide
 ## Run
 
 Java 25. Start Identity and Workspace first, then run `./mvnw spring-boot:run` from this directory.
+The internal attribution validator and its tests also require Node 22+ and
+`npm ci --prefix validator --ignore-scripts --no-audit --no-fund`. The Docker
+image includes this runtime. Attributed document sessions now invoke the validator; legacy sessions retain their existing path.
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
@@ -15,6 +18,10 @@ Java 25. Start Identity and Workspace first, then run `./mvnw spring-boot:run` f
 Keep the data directory on a persistent volume, restricted to the service user, and back it up. Run **one service instance** against this directory; an exclusive file lock prevents concurrent writers. Use HTTPS/WSS outside local development, including service-to-service calls when they cross an untrusted network. These URLs are deployment configuration, never client input.
 
 ## WebSocket protocol
+
+New eligible desktop sessions negotiate the [version 2 attribution protocol](ATTRIBUTION_PROTOCOL.md).
+The protocol below describes legacy sessions, which remain supported for existing
+history. No historical authorship is inferred during negotiation.
 
 `/ws/projects/{projectId}/workstreams/{workstreamId}/documents/{documentId}`
 
@@ -65,8 +72,8 @@ Storage failures produce no success receipt and close the affected room with
 `1013`. Slow-client/transport failures can lose a receipt after successful persistence;
 resending safely recovers it. Missing or false `acknowledgements` retains the legacy
 behavior with no receipt frames, so the current desktop remains compatible. The
-desktop still needs durable local CRDT storage and receipt handling before it can
-claim crash-safe offline editing. Existing journal files require no migration.
+desktop implements durable local CRDT storage and receipt handling. Legacy journal
+files require no migration; attributed documents use versioned records.
 
 Permissions and token validity are checked again every five seconds (dependency requests time out after three seconds). Changes can therefore take up to about eight seconds to stop an existing connection. Outages fail closed. The desktop should use backoff for transient failures, refresh authentication once for `4401`, and stop automatic retries for `4403`.
 
@@ -78,9 +85,26 @@ Permissions and token validity are checked again every five seconds (dependency 
 | `1009` | Transport message exceeds the size limit |
 | `1013` | Dependency/storage unavailable or capacity reached; preserve local state |
 
-**Desktop integration is pending.** The previous desktop sends unauthenticated binary frames and expects an empty binary replay marker. It must adopt this protocol before using this backend version. There is deliberately no anonymous compatibility mode.
+**Desktop integration is implemented.** The desktop authenticates, persists pending updates, and negotiates attributed editing for eligible new documents. There is no anonymous compatibility mode.
 
 ## Contributor activity
+
+The next attribution work starts with the [protocol design](../../docs/contribution-attribution.md).
+Its executable Yjs checks live in `protocol-checks/attribution.test.cjs`; run
+`node --test services/collaboration-service/protocol-checks/attribution.test.cjs`
+from the repository root with desktop dependencies installed. These verify
+snapshot overlap, deletion semantics, local transaction origins, and untrusted
+client IDs. They do not implement or certify original authorship.
+
+The [internal validator](validator/README.md) now uses pinned Yjs and a bounded
+Java-to-Node process boundary to reject foreign new structs, conflicting replay,
+missing dependencies, and unsupported content, and to identify effective edit
+ranges. The [attribution journal](ATTRIBUTION_JOURNAL.md) now adds durable writer
+bindings and atomic edit/provenance records behind `DocumentAttributionService`,
+which checks authorization on every call. Exact retries return original receipts
+after restart; stale validation cannot overwrite newer state. The socket handler now checks authorization and uses this store for version 2
+messages. Desktop envelopes and recovery are implemented; explicit
+unknown-provenance import for legacy histories and reporting endpoints remain planned.
 
 `GET /api/projects/{projectId}/teams/{teamId}/workstreams/{workstreamId}/documents/{documentId}/activity?limit=10&before=123`
 
@@ -101,7 +125,7 @@ Each document has a hashed filename containing an append journal of actor UUID, 
 
 Limits: 2 MiB per message, 32 MiB or 10,000 records per document, 32 active rooms, 32 participants per room, and 64 queued messages / 4 MiB per participant. Slow clients are disconnected; empty rooms are evicted from memory. On reaching a document history limit, updates are rejected without deleting earlier edits. Storage failures disconnect the affected room so its next session reloads durable history.
 
-This is a bounded single-instance implementation. CRDT compaction, aggregate disk quotas, multi-instance fanout/shared storage, per-line attribution, Git checkpoint coordination, and automatic desktop reconnect are not implemented here. Binary Yjs payloads are opaque to the server; semantic validation and convergence belong to compatible clients. Backend tests exercise simultaneous relay, access checks and revocation, replay, initialization handoff, attribution, and journal recovery; a two-desktop Yjs convergence test remains part of the desktop update.
+This is a bounded single-instance implementation. CRDT compaction, aggregate disk quotas, multi-instance fanout/shared storage, per-line attribution, Git checkpoint coordination, and automatic desktop reconnect are not implemented here. Legacy binary Yjs payloads remain opaque to the relay; negotiated version 2 updates use the server-side validator before persistence. Backend tests exercise simultaneous relay, access checks and revocation, replay, initialization handoff, attribution, and journal recovery; a two-desktop Yjs convergence test remains part of the desktop update.
 
 Run backend checks with `./mvnw test`.
 
@@ -140,3 +164,18 @@ and roster access; Workspace Service requires no changes. See
 [the presence protocol](PRESENCE_PROTOCOL.md) for authentication, heartbeat,
 multi-team counting, and frontend integration. This endpoint is backend-only;
 the desktop indicator has not been changed to consume it.
+
+### Restricted contribution reports
+
+Admins/team leads can open **Workstream → Contributions** in the desktop. The
+service checks current Identity membership/role and VIEW_PROJECT plus the exact
+Workspace scope for every report and evidence request. See the
+[API and coverage contract](../../docs/contribution-attribution.md#implemented-edit-dashboard).
+
+Set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact client origins;
+the default is `http://localhost:5173`. For packaged desktop use, explicitly add
+its platform origin (for example `tauri://localhost` on macOS). Cookies are not
+used by this API; it requires bearer authentication. Deploy this service and
+restart/rebuild the desktop after updating. No journal migration is needed.
+Reports are bounded prototype scans, not a global reporting index; native UI
+validation and sustained-load profiling remain necessary before broad rollout.

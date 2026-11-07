@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export type StoredDocument = { version: 1; snapshot: string; pending: string[]; ready: boolean };
+export type PendingEdit = { operationId: string; writerId: number; kind: 'seed' | 'edit'; update: string; sha256: string };
+export type StoredDocument = { version: 1; snapshot: string; pending: string[]; ready: boolean }
+  | { version: 2; snapshot: string; pending: PendingEdit[]; ready: boolean; writerId?: number; registrationId: string };
 export type DocumentStorage = { load: () => Promise<StoredDocument | null>; save: (value: StoredDocument) => Promise<void> };
 
 // Reopening a tab must wait for the previous instance's queued writes, including hashing.

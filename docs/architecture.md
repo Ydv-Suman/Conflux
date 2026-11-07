@@ -59,7 +59,8 @@ The repository currently contains:
 - desktop SQLite document recovery, pending-update retries, automatic reconnect, and automated recovery/convergence checks
 - team-wide online presence with an admin/team-lead roster, plus file-tree synchronization
 - a document activity endpoint exposing authenticated update submitters, timestamps, and sequences; this is not original edit attribution
-- no verified authorship ledger, contribution dashboard, live remote cursors, shared Git checkpoint implementation, or agent service yet
+- an internal Yjs validator, authenticated writer registration, and versioned edit/provenance journal with restart-safe receipts, negotiated WebSocket messages, and desktop recovery for eligible new documents
+- scoped admin/lead Contributions dashboard for validated account edits, with before/after evidence; live remote cursors, shared Git checkpoints, and agent service remain planned
 
 The manual two-user native desktop checks passed as reported by the user on 2026-11-05. Reliable contribution attribution and file history are the next milestone, before live cursors and shared Git checkpoints.
 
@@ -137,6 +138,20 @@ Remote services own shared metadata, authorization, coordination, and event rela
 
 ## Contribution attribution and ownership (planned)
 
+The [protocol design](contribution-attribution.md) specifies proposed writer
+bindings, edit envelopes, atomic journal records, recovery, and acceptance cases.
+Four executable checks against the installed Yjs library validate its assumptions.
+An internal, bounded Java-to-Node validator using pinned Yjs now validates plain
+text updates and effective edit ranges for negotiated version 2 sessions. Legacy
+documents continue through the existing protocol without inferred authorship.
+Durable writer bindings, journal provenance, and an authorization-checked internal
+service are implemented. The [journal contract](../services/collaboration-service/ATTRIBUTION_JOURNAL.md)
+describes recovery, idempotency, and legacy compatibility. The [negotiated protocol](../services/collaboration-service/ATTRIBUTION_PROTOCOL.md)
+and desktop integration are implemented for eligible new documents. Initial file
+contents are recorded as unknown-author imports. Eligible idle legacy histories now migrate through server reconstruction and one
+atomic imported baseline on clean modern-client negotiation. Original journal
+records and Yjs identities remain intact; pending legacy recovery is never relabeled. Collaboration now exposes restricted edit-report and evidence APIs; broader ownership and task/review reports remain pending.
+
 ### Evidence and identity
 
 Keep original contributor, authenticated update submitter, explicitly assigned task/module owner, checkpoint creator, and reviewer as separate identities. Task/module ownership includes assignment history; it is not inferred from editing volume or the last edit. Branch ownership elsewhere in this document identifies a workstream, not a person's contribution.
@@ -155,7 +170,7 @@ The planned attribution contract must:
 
 ### Access and presentation
 
-All views below are planned. The existing activity endpoint uses document editing authorization and exposes submitter metadata; it does not implement these reporting capabilities.
+The initial admin/lead edit dashboard and its evidence endpoint are implemented in Collaboration. Self-records, correction workflows, explicit ownership reports, and shared history UI remain planned. The existing activity endpoint uses document editing authorization and exposes submitter metadata separately.
 
 | View or action | Authorization requirement |
 | --- | --- |
@@ -163,11 +178,15 @@ All views below are planned. The existing activity endpoint uses document editin
 | Own contribution records and submission/status of correction requests | Authenticated subject's own records within authorized scope; a supplied member ID cannot broaden access |
 | Ordinary shared file history and debugging diffs | Document history access; omit restricted analytics and management annotations |
 
-Identity owns capability policy; Workspace enforces report and correction access; Collaboration enforces provenance/history access at its boundary. Roles are not scattered through frontend or service business logic. A session leader is not granted reporting authority by that operational role alone. Admin or lead status in one team grants no access to another team's reports or inaccessible workstreams.
+Identity owns capability policy. The initial edit dashboard uses one `DocumentAuthorization.authorizeContributions` boundary in Collaboration: current ADMIN/TEAM_LEAD membership plus VIEW_PROJECT and exact project/team/workstream validation through Workspace, including archived workstreams. No role or actor supplied by the client grants report access. Future cross-workflow projections and corrections belong in Workspace. Roles are not scattered through frontend or service business logic. A session leader is not granted reporting authority by that operational role alone. Admin or lead status in one team grants no access to another team's reports or inaccessible workstreams.
 
 Authorize every report, drill-down, correction, and any future export on the backend. Revalidate long-lived subscriptions, fail closed when authorization cannot be established, and invalidate restricted frontend views/caches after role or membership revocation. Define and test a bounded revocation interval before release. Hiding controls is not authorization; removing access cannot retract records already legitimately downloaded.
 
-The desktop starts with **Workstream → Changes & History → File history**, displaying attributable diffs and explicit unknowns. Admins/leads later receive **Contributions**, filtered by member and date range, with links to source evidence. Members receive their own records and correction requests. Checkpoint comparisons and test-result links follow checkpoint implementation; task, review, and agent measures depend on those workflows.
+The desktop starts with **Workstream → Changes & History → File history**, displaying attributable diffs and explicit unknowns. Admins/leads now receive **Workstream → Contributions**, filtered by member, file, and UTC date range, with paged operation records and before/after snapshots. The entry point appears under the selected team in the editor’s Projects sidebar (active workstream, or shared workstream when none is open); editing tabs stay mounted behind the modal. Members receive their own records and correction requests. Checkpoint comparisons and test-result links follow checkpoint implementation; task, review, and agent measures depend on those workflows.
+
+The initial report scans the shared file-tree journal and its document journals off the event loop. Stable IDs retain deleted files and the latest rename paths. It counts only non-imported version 2 operations with effective inserted/deleted ranges; legacy/imported entries and files without history have explicit coverage counters. It reports account-attributed UTF-16 units, not original human authorship or ownership. Filters use server acceptance time with an inclusive start and exclusive end. A member filter never expands access. Evidence snapshots reference the immediately preceding and accepted document sequence.
+
+Reports support All time or a custom window up to 366 days, with 100,000 scanned document records and 100 daily groups/source records per page. Daily totals are aggregated by account, stable file ID, and UTC date before pagination. Unverified submissions remain separate from attributed counts; the member list includes the team roster, including admins without attributed history. A larger scan fails without partial totals and can be narrowed by file. This prototype rereads bounded journals; it needs a reporting index and load validation before large workstreams. Reads across files are not an atomic workstream checkpoint; new edits can shift pages. Files outside the recorded tree are excluded. `Cache-Control: no-store` prevents HTTP caching; the desktop retains data only in component memory, preserves expanded evidence during successful background refreshes and clears data on failed requests, refreshes every 30 seconds while active and on focus, and unmounts it when changing scope. Background timer throttling means this is not a guaranteed wall-clock purge. Backend access is checked on every new request. Collaboration CORS accepts only configured exact origins; packaged desktop CSP also permits the local Collaboration HTTP endpoint.
 
 ### Meaning of contribution measures
 
@@ -232,7 +251,7 @@ Typing stays off databases and service-to-service calls:
 Local editor -> Local Y.Doc -> Workstream WebSocket room -> Remote Y.Doc -> Remote editor
 ```
 
-The local editor updates immediately. The current relay persists accepted updates before acknowledgement and broadcast; planned provenance must preserve that durability boundary. Identity authorization happens on join and is rechecked periodically, not for every keystroke. Workspace and Agent are not called for individual document updates, and contribution-report aggregation stays off this path.
+The local editor updates immediately. The current relay persists accepted updates before acknowledgement and broadcast; planned provenance must preserve that durability boundary. Legacy authorization happens on join and is rechecked periodically. The initial version 2 path additionally reauthorizes each edit envelope against Identity and Workspace before persistence; these asynchronous checks do not block local typing but add relay latency and service load. Measure this path and any bounded authorization caching before sustained deployment. Agent calls and contribution-report aggregation stay off the editing path.
 
 The collaboration service enforces bounded message sizes, per-client outbound queues, room capacity, join and idle timeouts, and slow-client behavior.
 
@@ -252,7 +271,7 @@ Team or project chat is available to every project member, regardless of active 
 - AI runs receive allowlisted tools and cannot silently modify canonical files.
 - Candidate patches are versioned, reviewed, tested, and explicitly approved.
 - Merge and workstream-update operations are auditable and never automatic on conflict.
-- Planned contribution and ownership reports require backend capabilities limited to admins/team leads within the requested scope; self-history and shared debugging history use separate access rules.
+- Current contribution reports and evidence require current admin/lead membership and VIEW_PROJECT within exact scope on every request. Future ownership reports, self-history, and shared debugging history use their own access rules.
 - Planned attribution corrections are audited, and report access is revoked when role, membership, or resource access is lost.
 
 ## Planned evolution

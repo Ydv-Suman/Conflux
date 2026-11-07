@@ -58,6 +58,9 @@ class FileTreeStoreTests {
             var state = store.load(key);
             assertTrue(state.entries.isEmpty());
             assertEquals(6, state.version());
+            assertEquals(List.of(new Document(main.id(), "source/App.java", true)),
+                    store.documents(key.projectId(), key.workstreamId()));
+            assertTrue(store.documents(key.projectId(), UUID.randomUUID()).isEmpty());
             assertEquals("class Main {}\n", state.operations.values().stream()
                     .filter(event -> event.version() == 3).findFirst().orElseThrow().command().content());
             // Reusing a deleted ID would reconnect a new file to the old file's document history.

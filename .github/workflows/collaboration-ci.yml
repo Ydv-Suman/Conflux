@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - services/collaboration-service/**
+      - desktop/src/features/editor/**
+      - desktop/package*.json
       - .github/workflows/collaboration-ci.yml
   pull_request:
     paths:
       - services/collaboration-service/**
+      - desktop/src/features/editor/**
+      - desktop/package*.json
       - .github/workflows/collaboration-ci.yml
 
 concurrency:
@@ -30,6 +34,22 @@ jobs:
           java-version: 25
           cache: maven
           cache-dependency-path: services/collaboration-service/pom.xml
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/collaboration-service/validator/package-lock.json
+
+      - name: Install and test Yjs validator
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+        working-directory: services/collaboration-service/validator
+
+      - name: Install desktop dependencies for real protocol integration tests
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: desktop
 
       - name: Test and package collaboration service
         run: ./mvnw verify

@@ -21,6 +21,7 @@ const settle = async () => {
   }
 };
 let sockets, history, participants, owner, messages, rejectToken, holdInitialization, holdReceipts;
+let attributedMode, bindings, operations, nextWriter;
 const originalSocket = global.WebSocket;
 const connections = [];
 const docs = [];
@@ -51,11 +52,46 @@ class Socket {
     queueMicrotask(() => {
       if (this.readyState !== 1) return;
       if (typeof data === 'string') {
-        assert.equal(this.authenticated, undefined, 'Only authentication uses a client text frame');
         const credentials = JSON.parse(data);
+        if (this.authenticated) {
+          assert.ok(attributedMode, 'Only attributed edits use client text frames');
+          const edit = credentials;
+          const binding = [...bindings.values()].find((item) => item.writerId === edit.writerId);
+          assert.equal(binding?.actor, this.actor, 'Writer must belong to this account');
+          const bytes = Buffer.from(edit.update, 'base64');
+          const previous = operations.get(edit.operationId);
+          const acknowledge = (record) => {
+            if (!holdReceipts) this.deliver(JSON.stringify({ type: 'ack', operationId: edit.operationId, writerId: edit.writerId,
+              sha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'), sequence: record.sequence }));
+          };
+          if (previous) {
+            assert.equal(previous.update, edit.update); assert.equal(previous.writerId, edit.writerId);
+            acknowledge(previous); return;
+          }
+          if (!history.length && holdInitialization) return;
+          assert.ok(history.length || (owner === this && edit.type === 'seed'));
+          assert.ok(!history.length || edit.type === 'edit');
+          const first = history.length === 0;
+          history.push(bytes);
+          const record = { ...edit, sequence: history.length };
+          operations.set(edit.operationId, record);
+          for (const peer of participants) {
+            if (peer !== this) peer.deliver(bytes);
+            if (first) peer.control('synced');
+          }
+          owner = undefined;
+          acknowledge(record); return;
+        }
         assert.equal(credentials.teamId, 'team-one');
         if (rejectToken(credentials.token)) { this.drop(rejectToken(credentials.token)); return; }
         this.authenticated = true;
+        this.actor = credentials.token;
+        if (attributedMode && credentials.protocol === 2) {
+          let binding = bindings.get(credentials.registrationId);
+          if (!binding) { binding = { writerId: ++nextWriter, actor: this.actor }; bindings.set(credentials.registrationId, binding); }
+          this.deliver(JSON.stringify({ type: 'protocol', version: 2, initialOperationId: operations.keys().next().value }));
+          this.deliver(JSON.stringify({ type: 'writer', requestId: credentials.registrationId, writerId: binding.writerId }));
+        }
         participants.add(this);
         if (history.length) { history.forEach((update) => this.deliver(update)); this.control('synced'); }
         else if (!owner) { owner = this; this.control('initialize'); }
@@ -100,6 +136,7 @@ beforeEach((t) => {
     } finally { pendingDigests--; activity++; }
   });
   sockets = []; history = []; participants = new Set(); messages = [];
+  attributedMode = false; bindings = new Map(); operations = new Map(); nextWriter = 100;
   owner = undefined; rejectToken = () => 0; holdInitialization = false; holdReceipts = false;
   global.WebSocket = Socket;
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -127,7 +164,10 @@ test('authenticates with a first text frame, keeps credentials out of URL, and w
   assert.equal(a.states.at(-1).phase, 'syncing');
   assert.equal(a.states.at(-1).ready, false);
   assert.equal(sockets[0].url, 'ws://collaboration/doc');
-  assert.deepEqual(JSON.parse(messages[0].data), { teamId: 'team-one', token: 'valid', acknowledgements: true });
+  assert.equal(JSON.parse(messages[0].data).protocol, 2);
+  assert.equal(JSON.parse(messages[0].data).teamId, 'team-one');
+  assert.equal(JSON.parse(messages[0].data).token, 'valid');
+  assert.equal(JSON.parse(messages[0].data).acknowledgements, true);
   assert.ok(messages[1].data instanceof Uint8Array);
 });
 
@@ -402,4 +442,156 @@ test('settling waits for delayed real hashing before checking convergence and re
   assert.equal(a.text.toString(), b.text.toString());
   assert.equal(a.states.at(-1).pending, false);
   assert.equal(b.states.at(-1).pending, false);
+});
+
+
+test('attributed editing persists writer envelopes and seeds existing text without claiming it as an edit', async () => {
+  attributedMode = true;
+  const storage = memoryStorage();
+  const a = open('existing code', async () => 'alice', storage), b = open('stale', async () => 'bob');
+  await settle();
+  assert.equal(a.states.at(-1).writable, true);
+  assert.equal(a.doc.gc, false);
+  assert.equal((await storage.load()).version, 2);
+  assert.equal([...operations.values()][0].type, 'seed');
+  a.text.insert(0, 'Alice:'); b.text.insert(b.text.length, ':Bob');
+  await settle();
+  assert.equal(a.text.toString(), b.text.toString());
+  assert.equal(a.text.toString(), 'Alice:existing code:Bob');
+  assert.equal(a.states.at(-1).pending, false);
+  assert.equal(b.states.at(-1).pending, false);
+  assert.ok([...operations.values()].slice(1).every((operation) => operation.type === 'edit'));
+});
+
+test('attributed pending edits retain original operation and writer identities across restart', async () => {
+  attributedMode = true;
+  const storage = memoryStorage();
+  const a = open('base', async () => 'alice', storage), b = open('base', async () => 'bob');
+  await settle();
+  sockets[0].drop(1006); await settle();
+  a.text.insert(0, 'offline:'); b.text.insert(b.text.length, ':online'); await settle();
+  const pending = (await storage.load()).pending[0];
+  assert.equal(pending.kind, 'edit');
+  a.connection.dispose(); a.doc.destroy();
+  const recovered = open('stale', async () => 'alice', storage); await settle();
+  assert.notEqual(recovered.doc.clientID, pending.writerId, 'A new window uses a new writer for future edits');
+  assert.equal(operations.get(pending.operationId).writerId, pending.writerId);
+  assert.equal(operations.get(pending.operationId).update, pending.update);
+  assert.equal(recovered.text.toString(), 'offline:base:online');
+  recovered.text.insert(0, 'new:'); await settle();
+  assert.equal(recovered.text.toString(), b.text.toString());
+  assert.equal(recovered.states.at(-1).pending, false);
+});
+
+test('attributed lost receipts retry exactly once logically after restart', async () => {
+  attributedMode = true;
+  const storage = memoryStorage();
+  const a = open('base', async () => 'alice', storage); await settle();
+  holdReceipts = true;
+  a.text.insert(0, 'saved:'); await settle();
+  const pending = (await storage.load()).pending[0], count = operations.size;
+  a.connection.dispose(); a.doc.destroy(); holdReceipts = false;
+  const recovered = open('stale', async () => 'alice', storage); await settle();
+  assert.equal(operations.size, count);
+  assert.equal(operations.get(pending.operationId).update, pending.update);
+  assert.equal(recovered.states.at(-1).pending, false);
+});
+
+test('attributed receipts must match operation, writer, and exact bytes', async () => {
+  attributedMode = true;
+  const storage = memoryStorage();
+  const a = open('base', undefined, storage); await settle(); holdReceipts = true;
+  a.text.insert(0, 'pending:'); await settle();
+  const edit = (await storage.load()).pending[0];
+  for (const override of [{ writerId: edit.writerId + 1 }, { sha256: '0'.repeat(64) }, { operationId: crypto.randomUUID() }]) {
+    sockets[0].deliver(JSON.stringify({ type: 'ack', operationId: edit.operationId, writerId: edit.writerId, sha256: edit.sha256, sequence: 2, ...override }));
+    await settle();
+    assert.equal((await storage.load()).pending.length, 1);
+  }
+});
+
+test('an attributed recovery cannot silently downgrade to an old server', async () => {
+  attributedMode = true;
+  const storage = memoryStorage();
+  const a = open('base', undefined, storage); await settle();
+  a.connection.dispose(); a.doc.destroy(); attributedMode = false;
+  const recovered = open('stale', undefined, storage); await settle();
+  assert.equal(recovered.states.at(-1).phase, 'error');
+  assert.equal(recovered.states.at(-1).writable, false);
+  assert.equal((await storage.load()).version, 2);
+});
+
+test('attributed edits do not leave the device before envelope persistence', async () => {
+  attributedMode = true;
+  const base = memoryStorage(); let release;
+  const storage = { load: base.load, save: async (value) => {
+    if (release === null) await new Promise((resolve) => { release = resolve; });
+    await base.save(value);
+  } };
+  const a = open('base', undefined, storage); await settle();
+  const count = operations.size; release = null;
+  a.text.insert(0, 'durable:'); await settle();
+  assert.equal(operations.size, count);
+  release(); await settle();
+  assert.equal(operations.size, count + 1);
+  assert.equal(a.states.at(-1).pending, false);
+});
+
+test('a lost initial baseline receipt survives restart without seeding twice', async () => {
+  attributedMode = true; holdReceipts = true;
+  const storage = memoryStorage();
+  const a = open('base', undefined, storage); await settle();
+  assert.equal((await storage.load()).pending[0].kind, 'seed');
+  a.connection.dispose(); a.doc.destroy(); holdReceipts = false;
+  const recovered = open('stale', undefined, storage); await settle();
+  assert.equal(recovered.text.toString(), 'base');
+  assert.equal(operations.size, 1);
+  assert.equal(recovered.states.at(-1).pending, false);
+});
+
+test('a replaced uncommitted baseline stops safely rather than duplicating initial contents', async () => {
+  attributedMode = true; holdInitialization = true;
+  const storage = memoryStorage();
+  const a = open('first baseline', async () => 'alice', storage), b = open('second baseline', async () => 'bob');
+  await settle();
+  holdInitialization = false;
+  sockets[0].drop(1006); await settle();
+  a.connection.dispose(); a.doc.destroy();
+  assert.equal(b.text.toString(), 'second baseline');
+  const recovered = open('stale', async () => 'alice', storage); await settle();
+  assert.equal(recovered.states.at(-1).phase, 'error');
+  assert.match(recovered.states.at(-1).message, /different baselines/);
+  assert.equal(recovered.text.toString(), 'first baseline');
+  assert.equal(operations.size, 1);
+});
+
+test('clean legacy recovery negotiates attribution without duplicating saved content', async () => {
+  const old = new Y.Doc(); docs.push(old); old.clientID = 40;
+  old.getText('content').insert(0, 'legacy'); old.getText('content').delete(0, 1);
+  const baseline = Y.encodeStateAsUpdate(old);
+  history.push(baseline); attributedMode = true;
+  const saved = memoryStorage();
+  await saved.save({ version: 1, snapshot: Buffer.from(baseline).toString('base64'), pending: [], ready: true });
+  const client = open('egacy', async () => 'valid', saved); await settle();
+  const handshake = JSON.parse(messages.find(item => typeof item.data === 'string').data);
+  assert.equal(handshake.protocol, 2); assert.equal(handshake.migrateLegacy, true);
+  assert.equal(client.text.toString(), 'egacy'); assert.equal((await saved.load()).version, 2);
+  assert.notEqual(client.doc.clientID, 40);
+  client.text.insert(5, '!'); await settle();
+  assert.equal(client.text.toString(), 'egacy!'); assert.equal(client.states.at(-1).pending, false);
+  assert.equal([...operations.values()][0].type, 'edit');
+});
+
+test('unsent legacy recovery is preserved and never relabeled after migration', async () => {
+  const old = new Y.Doc(); docs.push(old); old.getText('content').insert(0, 'offline work');
+  const encoded = Buffer.from(Y.encodeStateAsUpdate(old)).toString('base64');
+  const saved = memoryStorage();
+  await saved.save({ version: 1, snapshot: encoded, pending: [encoded], ready: true });
+  rejectToken = () => 4410;
+  const client = open('base', async () => 'valid', saved); await settle();
+  assert.equal(JSON.parse(messages[0].data).protocol, undefined);
+  assert.equal(client.states.at(-1).phase, 'error');
+  assert.match(client.states.at(-1).message, /unsent legacy/);
+  assert.equal(client.text.toString(), 'offline work');
+  assert.deepEqual((await saved.load()).pending, [encoded]); assert.equal((await saved.load()).version, 1);
 });

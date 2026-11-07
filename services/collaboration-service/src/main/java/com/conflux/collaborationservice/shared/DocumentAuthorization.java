@@ -23,6 +23,14 @@ public class DocumentAuthorization {
     }
 
     public Mono<UUID> authorize(DocumentId document, Credentials credentials) {
+        return authorize(document, credentials, false);
+    }
+
+    public Mono<UUID> authorizeContributions(DocumentId document, Credentials credentials) {
+        return authorize(document, credentials, true);
+    }
+
+    private Mono<UUID> authorize(DocumentId document, Credentials credentials, boolean reporting) {
         if (credentials == null || credentials.teamId() == null || credentials.token() == null
                 || credentials.token().isBlank() || credentials.token().length() > 8192) {
             return Mono.error(new Denied(4401));
@@ -39,12 +47,15 @@ public class DocumentAuthorization {
             Workstream workstream = result.getT2();
             if (member.userId() == null || !credentials.teamId().equals(member.teamId())
                     || member.capabilities() == null
-                    || !member.capabilities().containsAll(Set.of("JOIN_WORKSTREAM", "EDIT_DOCUMENT"))
+                    || (reporting ? !member.capabilities().contains("VIEW_PROJECT")
+                        || !Set.of("ADMIN", "TEAM_LEAD").contains(member.role() == null ? "" : member.role())
+                        : !member.capabilities().containsAll(Set.of("JOIN_WORKSTREAM", "EDIT_DOCUMENT")))
                     || !document.projectId().equals(workstream.projectId())
                     || !document.workstreamId().equals(workstream.workstreamId())
-                    || !credentials.teamId().equals(workstream.teamId()) || !workstream.repositoryReady()
-                    || !Set.of("CREATED", "ACTIVE", "REVIEWING", "READY_TO_MERGE", "BLOCKED", "CONFLICT")
-                            .contains(workstream.status() == null ? "" : workstream.status())) {
+                    || !credentials.teamId().equals(workstream.teamId())
+                    || (!reporting && (!workstream.repositoryReady()
+                        || !Set.of("CREATED", "ACTIVE", "REVIEWING", "READY_TO_MERGE", "BLOCKED", "CONFLICT")
+                            .contains(workstream.status() == null ? "" : workstream.status())))) {
                 throw new Denied(4403);
             }
             return member.userId();

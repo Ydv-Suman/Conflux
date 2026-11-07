@@ -1,0 +1,9 @@
+{
+  "name": "conflux-attribution-validator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": { "yjs": "13.6.33" },
+  "engines": { "node": ">=22" }
+}

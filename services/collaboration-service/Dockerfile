@@ -1,3 +1,9 @@
+FROM node:22-bookworm-slim AS validator
+WORKDIR /validator
+COPY validator/package.json validator/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY validator/validate.mjs validator/worker.mjs ./
+
 FROM eclipse-temurin:25-jdk-noble AS build
 
 WORKDIR /conflux
@@ -13,6 +19,8 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin conf
     && install -d -m 0700 -o conflux -g conflux /app/documents
 WORKDIR /app
 COPY --from=build --chmod=0444 /conflux/target/collaboration-service-*.jar app.jar
+COPY --from=validator /usr/local/bin/node /usr/local/bin/node
+COPY --from=validator /validator /app/validator
 
 ENV JAVA_TOOL_OPTIONS="-Xms256m -Xmx512m -Djava.io.tmpdir=/tmp"
 ENV COLLABORATION_DATA_DIR=/app/documents

@@ -27,7 +27,7 @@ class DocumentRelayCloseTests {
     @Test void handlerCancellationDoesNotReleaseAnInFlightCloseFrame() {
         var authorization = mock(DocumentAuthorization.class);
         var session = mock(WebSocketSession.class);
-        var handler = new DocumentRelayHandler(authorization, mock(DocumentJournal.class), new ObjectMapper());
+        var handler = new DocumentRelayHandler(authorization, mock(DocumentJournal.class), mock(com.conflux.collaborationservice.shared.AttributedDocumentStore.class), new ObjectMapper());
         UUID project = UUID.randomUUID(), workstream = UUID.randomUUID(), team = UUID.randomUUID();
         when(session.getHandshakeInfo()).thenReturn(new HandshakeInfo(URI.create(
                 "ws://localhost/ws/projects/" + project + "/workstreams/" + workstream + "/documents/main-ts"),

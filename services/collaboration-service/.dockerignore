@@ -1,4 +1,5 @@
 target/
+validator/node_modules/
 secrets/
 .conflux/
 .env
