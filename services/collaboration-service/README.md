@@ -17,6 +17,33 @@ image includes this runtime. Attributed document sessions now invoke the validat
 
 Keep the data directory on a persistent volume, restricted to the service user, and back it up. Run **one service instance** against this directory; an exclusive file lock prevents concurrent writers. Use HTTPS/WSS outside local development, including service-to-service calls when they cross an untrusted network. These URLs are deployment configuration, never client input.
 
+## Live file presence and cursors
+
+`/ws/projects/{projectId}/workstreams/{workstreamId}/presence` is an independent,
+ephemeral WebSocket. Authenticate within five seconds using `{ "teamId": "…", "token": "…" }`
+as the first text frame. Query strings are rejected. Authorization uses the same
+current Identity capabilities and exact Workspace scope as document editing,
+and is rechecked every five seconds.
+
+Send `{ "type": "presence", "documentId": "stable-file-id", "anchor": null, "head": null }`
+to advertise the active file. Cursor anchor/head may instead contain base64-encoded
+Yjs relative positions (both present together, at most 256 characters each).
+Send a null document ID and null positions when no file is active or the app is hidden.
+The desktop coalesces cursor motion at 50 ms and sends a heartbeat every ten seconds.
+
+The server returns latest snapshots with type `workstream-presence`, project/team/workstream
+IDs, this connection's `selfId`, and `participants`. Each participant has a server-generated
+`sessionId`, authenticated `userId`, stable `documentId`, and nullable `anchor`/`head`.
+Only sessions with active files appear. Names come from the existing authorized team-members
+API; the same deterministic color and first initial appear beside filenames and remote
+cursors. Multiple windows for one user are deduplicated beside each file.
+
+Disconnect, scope/access loss, or 35 seconds without a heartbeat removes the session.
+There are at most 128 active workstreams and 32 presence sessions per workstream, with
+60 incoming messages per second per session. Presence is single-instance and never
+writes document updates, history, contribution records, or backups. Horizontal scaling
+requires shared expiring presence leases in addition to a distributed document relay.
+
 ## WebSocket protocol
 
 New eligible desktop sessions negotiate the [version 2 attribution protocol](ATTRIBUTION_PROTOCOL.md).

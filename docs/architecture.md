@@ -60,9 +60,10 @@ The repository currently contains:
 - team-wide online presence with an admin/team-lead roster, plus file-tree synchronization
 - a document activity endpoint exposing authenticated update submitters, timestamps, and sequences; this is not original edit attribution
 - an internal Yjs validator, authenticated writer registration, and versioned edit/provenance journal with restart-safe receipts, negotiated WebSocket messages, and desktop recovery for eligible new documents
-- scoped admin/lead Contributions dashboard for validated account edits, with before/after evidence; live remote cursors, shared Git checkpoints, and agent service remain planned
+- scoped admin/lead Contributions dashboard for validated account edits, with before/after evidence and close-triggered file history
+- ephemeral active-file initials in Explorer/tabs and named relative cursors/selections; shared Git checkpoints and agent service remain planned
 
-The manual two-user native desktop checks passed as reported by the user on 2026-11-05. Reliable contribution attribution and file history are the next milestone, before live cursors and shared Git checkpoints.
+The user has completed the native attribution/history acceptance milestone. Live file presence and cursors are implemented with automated checks; their two-user native visual acceptance remains outstanding. Shared Git checkpoints are the next workflow milestone.
 
 ## Next milestone: attributable shared editing
 
@@ -286,7 +287,7 @@ Team or project chat is available to every project member, regardless of active 
 
 1. Define the edit-attribution protocol, storage consistency, trust boundary, coverage, and access contract above.
 2. Implement and validate one-file attributable history, backend access checks, self-records, and audited correction handling. Exercise concurrency, offline work, replay, restart, spoofing attempts, and revocation before reporting contribution totals.
-3. Add named remote cursors and selections, scoped to the active file and separate from durable attribution and team presence.
+3. Validate the implemented named remote cursors/selections and file initials in two native clients. They use a separate ephemeral workstream socket, stable file IDs, authenticated identities, and Yjs relative positions; cursor motion creates no history.
 4. Add the Git changes panel and coordinated shared checkpoints, preserving provenance and separating contributors from checkpoint creators and reviewers.
 5. Extend workstream branch/update/merge workflows, task ownership, review evidence, and chat as needed. Add evidence-backed contribution reporting only as its source workflows become available.
 6. Add a local terminal, then per-workstream shared output and input control with one explicit execution host.

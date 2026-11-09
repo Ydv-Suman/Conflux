@@ -1,3 +1,5 @@
+import { CollaboratorBadges } from '../teams/CollaboratorBadges';
+import type { Collaborator } from '../teams/collaborators';
 import { createPortal } from 'react-dom';
 import { Modal } from '../../components/Modal';
 import { MaterialIcon } from './MaterialIcon';
@@ -7,12 +9,13 @@ import type { RepositoryFile, RepositoryInfo } from './api';
 
 type Action = { type: 'FILE' | 'DIRECTORY' | 'RENAME' | 'DELETE'; path: string };
 type TreeProps = {
+  collaborators?: Collaborator[]; documentIds?: Record<string, string>;
   entries: RepositoryFile[]; onOpen: (file: RepositoryFile) => void;
   selected: string | null; onSelect: (path: string | null) => void;
   onAction?: (action: Action) => void;
   onLocation: (folder: string) => void; currentFolder: string; parent?: string; draft?: { parent: string; node: ReactNode }; rename?: { path: string; onCommit: (name: string) => void; onCancel: () => void };
 };
-function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, currentFolder, parent = '', draft, rename }: TreeProps) {
+function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, currentFolder, parent = '', draft, rename, collaborators, documentIds }: TreeProps) {
   const keyboard = (event: KeyboardEvent, path: string) => {
     if (onAction && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
       event.preventDefault(); onSelect(path);
@@ -21,7 +24,7 @@ function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, c
   return <ul className="m-0 list-none p-0">{draft?.parent === parent && <li>{draft.node}</li>}{entries.map((entry) => {
     const nameInput = rename?.path === entry.path ? <InlineName key={entry.path} kind={entry.directory ? 'DIRECTORY' : 'FILE'} initialName={entry.name} onCommit={rename.onCommit} onCancel={rename.onCancel} /> : null;
     return <li className="relative" key={entry.path}>
-    {entry.directory ? <details ref={(element) => { if (element && ((draft && (draft.parent === entry.path || draft.parent.startsWith(`${entry.path}/`))) || (rename && rename.path.startsWith(`${entry.path}/`)))) element.open = true; }}><summary className={`explorer-entry ${currentFolder === entry.path ? 'is-current-folder' : ''}`} onClick={() => { onLocation(entry.path); onSelect(null); }} title={entry.path} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><svg className="explorer-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>{nameInput || <><MaterialIcon name={entry.name} directory /><span>{entry.name}</span></>}</summary><div className="explorer-nesting pl-3"><FileTree entries={entry.children} onOpen={onOpen} selected={selected} onSelect={onSelect} onAction={onAction} onLocation={onLocation} currentFolder={currentFolder} parent={entry.path} draft={draft} rename={rename} /></div></details> : nameInput || <button className="explorer-entry explorer-file-entry" title={entry.path} type="button" onClick={(event) => { onSelect(null); onLocation(parent); if (event.detail < 2) onOpen(entry); }} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><MaterialIcon name={entry.name} /><span>{entry.name}</span></button>}
+    {entry.directory ? <details ref={(element) => { if (element && ((draft && (draft.parent === entry.path || draft.parent.startsWith(`${entry.path}/`))) || (rename && rename.path.startsWith(`${entry.path}/`)))) element.open = true; }}><summary className={`explorer-entry ${currentFolder === entry.path ? 'is-current-folder' : ''}`} onClick={() => { onLocation(entry.path); onSelect(null); }} title={entry.path} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><svg className="explorer-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>{nameInput || <><MaterialIcon name={entry.name} directory /><span>{entry.name}</span></>}</summary><div className="explorer-nesting pl-3"><FileTree collaborators={collaborators} documentIds={documentIds} entries={entry.children} onOpen={onOpen} selected={selected} onSelect={onSelect} onAction={onAction} onLocation={onLocation} currentFolder={currentFolder} parent={entry.path} draft={draft} rename={rename} /></div></details> : nameInput || <button className="explorer-entry explorer-file-entry" title={entry.path} type="button" onClick={(event) => { onSelect(null); onLocation(parent); if (event.detail < 2) onOpen(entry); }} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><MaterialIcon name={entry.name} /><span>{entry.name}</span><CollaboratorBadges participants={collaborators} documentId={documentIds?.[entry.path]} /></button>}
     {onAction && selected === entry.path && <div className="explorer-item-actions" role="group" aria-label={`Actions for ${entry.path}`} onMouseDown={(event) => event.preventDefault()} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onSelect(null); }}>
       {entry.directory && <>
         <button type="button" autoFocus onClick={() => onAction({ type: 'FILE', path: `${entry.path}/` })}>New file</button>
@@ -33,7 +36,8 @@ function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, c
   </li>; })}</ul>;
 }
 
-export function RepositoryExplorer({ projectName, repository, onConnect, onChooseWorkstream, onOpen, onChange, onSync, synced = false, syncing = false }: {
+export function RepositoryExplorer({ projectName, repository, onConnect, onChooseWorkstream, onOpen, onChange, onSync, synced = false, syncing = false, collaborators, documentIds }: {
+  collaborators?: Collaborator[]; documentIds?: Record<string, string>;
   onChange?: (command: TreeCommand) => Promise<void>; onSync?: () => void; synced?: boolean; syncing?: boolean;
   projectName?: string; repository: RepositoryInfo | null; onConnect: () => void; onChooseWorkstream: () => void; onOpen: (file: RepositoryFile) => void;
 }) {
@@ -73,7 +77,7 @@ export function RepositoryExplorer({ projectName, repository, onConnect, onChoos
     </div>
     {actionForm && createPortal(<Modal title="Delete file or folder" compact onClose={() => { if (!busy) setAction(null); }}>{actionForm}</Modal>, document.body)}
     {error && !actionForm && <p className="m-0 text-xs" role="alert">{error}</p>}
-    <div id={treeId} hidden={!expanded}><FileTree entries={repository.files} onOpen={onOpen} selected={selected} onSelect={setSelected} onAction={onChange && !busy ? begin : undefined} onLocation={setCurrentFolder} currentFolder={currentFolder} rename={action?.type === 'RENAME' ? { path: action.path, onCancel: () => setAction(null), onCommit: (name) => {
+    <div id={treeId} hidden={!expanded}><FileTree collaborators={collaborators} documentIds={documentIds} entries={repository.files} onOpen={onOpen} selected={selected} onSelect={setSelected} onAction={onChange && !busy ? begin : undefined} onLocation={setCurrentFolder} currentFolder={currentFolder} rename={action?.type === 'RENAME' ? { path: action.path, onCancel: () => setAction(null), onCommit: (name) => {
       const parent = action.path.slice(0, action.path.lastIndexOf('/') + 1);
       setAction(null);
       if (parent + name === action.path) return;
