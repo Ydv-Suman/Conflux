@@ -19,7 +19,7 @@ class ContributionControllerTests {
     final DocumentAuthorization auth = mock(DocumentAuthorization.class);
     final DocumentJournal journal = mock(DocumentJournal.class);
     final FileTreeStore tree = mock(FileTreeStore.class);
-    final ContributionController controller = new ContributionController(auth, journal, tree);
+    final ContributionController controller = new ContributionController(auth, journal, tree, new DocumentUpdateValidator("node", "validator/worker.mjs", new tools.jackson.databind.ObjectMapper()));
     final String path = "/api/projects/" + project + "/teams/" + team + "/workstreams/" + stream + "/contributions";
     WebTestClient client;
     String query() { return "?from=" + start + "&until=" + end; }

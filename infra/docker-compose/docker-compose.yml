@@ -100,10 +100,12 @@ services:
       IDENTITY_API_URL: http://identity-service:8080
       WORKSPACE_API_URL: http://workspace-service:9000
       COLLABORATION_DATA_DIR: /app/documents
+      COLLABORATION_BACKUP_DIR: /app/backups
     ports:
       - "8090:8090"
     volumes:
       - collaboration-data:/app/documents
+      - collaboration-backups:/app/backups
     depends_on:
       identity-service:
         condition: service_started
@@ -112,3 +114,4 @@ services:
 
 volumes:
   collaboration-data:
+  collaboration-backups:

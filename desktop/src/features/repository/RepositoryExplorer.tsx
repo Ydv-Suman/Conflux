@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { Modal } from '../../components/Modal';
 import { MaterialIcon } from './MaterialIcon';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { TreeCommand } from './fileTree';
@@ -8,17 +10,19 @@ type TreeProps = {
   entries: RepositoryFile[]; onOpen: (file: RepositoryFile) => void;
   selected: string | null; onSelect: (path: string | null) => void;
   onAction?: (action: Action) => void;
-  onLocation: (folder: string) => void; currentFolder: string; parent?: string; draft?: { parent: string; node: ReactNode };
+  onLocation: (folder: string) => void; currentFolder: string; parent?: string; draft?: { parent: string; node: ReactNode }; rename?: { path: string; onCommit: (name: string) => void; onCancel: () => void };
 };
-function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, currentFolder, parent = '', draft }: TreeProps) {
+function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, currentFolder, parent = '', draft, rename }: TreeProps) {
   const keyboard = (event: KeyboardEvent, path: string) => {
     if (onAction && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
       event.preventDefault(); onSelect(path);
     }
   };
-  return <ul className="m-0 list-none p-0">{draft?.parent === parent && <li>{draft.node}</li>}{entries.map((entry) => <li className="relative" key={entry.path}>
-    {entry.directory ? <details ref={(element) => { if (element && draft && (draft.parent === entry.path || draft.parent.startsWith(`${entry.path}/`))) element.open = true; }}><summary className={`explorer-entry ${currentFolder === entry.path ? 'is-current-folder' : ''}`} onClick={() => { onLocation(entry.path); onSelect(null); }} title={entry.path} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><svg className="explorer-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg><MaterialIcon name={entry.name} directory /><span>{entry.name}</span></summary><div className="explorer-nesting pl-3"><FileTree entries={entry.children} onOpen={onOpen} selected={selected} onSelect={onSelect} onAction={onAction} onLocation={onLocation} currentFolder={currentFolder} parent={entry.path} draft={draft} /></div></details> : <button className="explorer-entry explorer-file-entry" title={entry.path} type="button" onClick={(event) => { onSelect(null); onLocation(parent); if (event.detail < 2) onOpen(entry); }} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><MaterialIcon name={entry.name} /><span>{entry.name}</span></button>}
-    {onAction && selected === entry.path && <div className="explorer-item-actions" role="group" aria-label={`Actions for ${entry.path}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onSelect(null); }}>
+  return <ul className="m-0 list-none p-0">{draft?.parent === parent && <li>{draft.node}</li>}{entries.map((entry) => {
+    const nameInput = rename?.path === entry.path ? <InlineName key={entry.path} kind={entry.directory ? 'DIRECTORY' : 'FILE'} initialName={entry.name} onCommit={rename.onCommit} onCancel={rename.onCancel} /> : null;
+    return <li className="relative" key={entry.path}>
+    {entry.directory ? <details ref={(element) => { if (element && ((draft && (draft.parent === entry.path || draft.parent.startsWith(`${entry.path}/`))) || (rename && rename.path.startsWith(`${entry.path}/`)))) element.open = true; }}><summary className={`explorer-entry ${currentFolder === entry.path ? 'is-current-folder' : ''}`} onClick={() => { onLocation(entry.path); onSelect(null); }} title={entry.path} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><svg className="explorer-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>{nameInput || <><MaterialIcon name={entry.name} directory /><span>{entry.name}</span></>}</summary><div className="explorer-nesting pl-3"><FileTree entries={entry.children} onOpen={onOpen} selected={selected} onSelect={onSelect} onAction={onAction} onLocation={onLocation} currentFolder={currentFolder} parent={entry.path} draft={draft} rename={rename} /></div></details> : nameInput || <button className="explorer-entry explorer-file-entry" title={entry.path} type="button" onClick={(event) => { onSelect(null); onLocation(parent); if (event.detail < 2) onOpen(entry); }} onContextMenu={(event) => { if (onAction) { event.preventDefault(); event.stopPropagation(); onLocation(entry.directory ? entry.path : parent); onSelect(entry.path); } }} onKeyDown={(event) => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) onLocation(entry.directory ? entry.path : parent); keyboard(event, entry.path); }}><MaterialIcon name={entry.name} /><span>{entry.name}</span></button>}
+    {onAction && selected === entry.path && <div className="explorer-item-actions" role="group" aria-label={`Actions for ${entry.path}`} onMouseDown={(event) => event.preventDefault()} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onSelect(null); }}>
       {entry.directory && <>
         <button type="button" autoFocus onClick={() => onAction({ type: 'FILE', path: `${entry.path}/` })}>New file</button>
         <button type="button" onClick={() => onAction({ type: 'DIRECTORY', path: `${entry.path}/` })}>New folder</button>
@@ -26,7 +30,7 @@ function FileTree({ entries, onOpen, selected, onSelect, onAction, onLocation, c
       <button type="button" autoFocus={!entry.directory} onClick={() => onAction({ type: 'RENAME', path: entry.path })}>Rename</button>
       <button type="button" onClick={() => onAction({ type: 'DELETE', path: entry.path })}>Delete</button>
     </div>}
-  </li>)}</ul>;
+  </li>; })}</ul>;
 }
 
 export function RepositoryExplorer({ projectName, repository, onConnect, onChooseWorkstream, onOpen, onChange, onSync, synced = false, syncing = false }: {
@@ -38,10 +42,20 @@ export function RepositoryExplorer({ projectName, repository, onConnect, onChoos
   const [currentFolder, setCurrentFolder] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [action, setAction] = useState<Action | null>(null);
-  const [path, setPath] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const begin = (next: Action) => { setExpanded(true); setSelected(null); setAction(next); setPath(next.path); setError(''); };
+  const begin = (next: Action) => { setExpanded(true); setSelected(null); setAction(next); setError(''); };
+  const actionForm = action?.type === 'DELETE' ? <form className="explorer-action-form mx-1 my-2 grid gap-2 text-xs" key={`${action.type}/${action.path}`} onSubmit={(event) => {
+      event.preventDefault(); if (busy || !onChange) return;
+      const command: TreeCommand = { operationId: crypto.randomUUID(), expectedVersion: 0, type: 'DELETE' };
+      command.path = action.path;
+      setBusy(true); setError('');
+      void onChange(command).then(() => setAction(null)).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setBusy(false));
+    }}>
+      <p className="m-0 break-words">Delete <strong>{action.path}</strong> for everyone? Local contents will be kept in the recovery folder.</p>
+      <div className="flex gap-2"><button className="neutral-button" type="button" disabled={busy} onClick={() => setAction(null)}>Cancel</button><button className="danger-button" type="submit" disabled={busy || !onChange}>{busy ? 'Deleting…' : 'Delete for everyone'}</button></div>
+      {error && <p className="m-0 text-xs" role="alert">{error}</p>}
+    </form> : null;
   if (!repository) return <div className="grid gap-2"><button className="neutral-button-filled w-full" type="button" onClick={onConnect}>Select local folder</button><button className="neutral-button w-full" type="button" onClick={onChooseWorkstream}>Choose team</button></div>;
   return <nav className="repository-explorer" aria-label="Repository files" onKeyDown={(event) => {
     if (event.key === 'Escape' && !busy) { setSelected(null); setAction(null); }
@@ -57,20 +71,20 @@ export function RepositoryExplorer({ projectName, repository, onConnect, onChoos
         <button className={`explorer-icon-button explorer-sync-icon ${synced ? 'is-synced' : 'is-unsynced'}`} type="button" aria-label={syncing ? 'Not synced — synchronizing files' : synced ? 'Files synced — sync again' : 'Files not synced — retry sync'} title={syncing ? 'Not synced — synchronizing files' : synced ? 'Files synced — sync again' : 'Files not synced — retry sync'} disabled={!onSync || syncing || busy} onClick={onSync}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10a8 8 0 0 0-14-5L3 8m0-5v5h5M4 14a8 8 0 0 0 14 5l3-3m0 5v-5h-5" /></svg></button>
       </div>
     </div>
-    {action && (action.type === 'RENAME' || action.type === 'DELETE') && <form className="explorer-action-form mb-3 grid gap-2 text-xs" key={`${action.type}/${action.path}`} onSubmit={(event) => {
-      event.preventDefault(); if (busy || !onChange) return;
-      const command: TreeCommand = { operationId: crypto.randomUUID(), expectedVersion: 0, type: action.type === 'DELETE' ? 'DELETE' : 'RENAME' };
-      command.path = action.path; if (command.type === 'RENAME') command.targetPath = path;
+    {actionForm && createPortal(<Modal title="Delete file or folder" compact onClose={() => { if (!busy) setAction(null); }}>{actionForm}</Modal>, document.body)}
+    {error && !actionForm && <p className="m-0 text-xs" role="alert">{error}</p>}
+    <div id={treeId} hidden={!expanded}><FileTree entries={repository.files} onOpen={onOpen} selected={selected} onSelect={setSelected} onAction={onChange && !busy ? begin : undefined} onLocation={setCurrentFolder} currentFolder={currentFolder} rename={action?.type === 'RENAME' ? { path: action.path, onCancel: () => setAction(null), onCommit: (name) => {
+      const parent = action.path.slice(0, action.path.lastIndexOf('/') + 1);
+      setAction(null);
+      if (parent + name === action.path) return;
+      if (name === '.' || name === '..' || /[\\/]/.test(name)) { setError('Enter a name without path separators.'); return; }
+      if (!onChange) { setError('Wait for file synchronization, then try again.'); return; }
       setBusy(true); setError('');
-      void onChange(command).then(() => setAction(null)).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setBusy(false));
-    }}>
-      {action.type === 'DELETE' ? <p className="m-0 break-words">Delete <strong>{action.path}</strong> for everyone? Local contents will be kept in the recovery folder.</p> : <label>{`Rename ${action.path} to`}<input className="mt-1 block w-full rounded border p-2" autoFocus required disabled={busy} value={path} onChange={(event) => setPath(event.target.value)} placeholder="src/Main.java" /></label>}
-      <div className="flex gap-2"><button className="neutral-button" type="submit" autoFocus={action.type === 'DELETE'} disabled={busy || !onChange}>{busy ? 'Applying…' : action.type === 'DELETE' ? 'Delete for everyone' : 'Rename'}</button><button className="neutral-button" type="button" disabled={busy} onClick={() => setAction(null)}>Cancel</button></div>
-    </form>}
-    {error && <p className="m-0 text-xs" role="alert">{error}</p>}
-    <div id={treeId} hidden={!expanded}><FileTree entries={repository.files} onOpen={onOpen} selected={selected} onSelect={setSelected} onAction={onChange && !busy ? begin : undefined} onLocation={setCurrentFolder} currentFolder={currentFolder} draft={action && (action.type === 'FILE' || action.type === 'DIRECTORY') ? {
+      void onChange({ operationId: crypto.randomUUID(), expectedVersion: 0, type: 'RENAME', path: action.path, targetPath: parent + name })
+        .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setBusy(false));
+    } } : undefined} draft={action && (action.type === 'FILE' || action.type === 'DIRECTORY') ? {
       parent: action.path.replace(/\/$/, ''),
-      node: <InlineCreate key={`${action.type}/${action.path}`} kind={action.type} onCancel={() => setAction(null)} onCommit={(name) => {
+      node: <InlineName key={`${action.type}/${action.path}`} kind={action.type} onCancel={() => setAction(null)} onCommit={(name) => {
         if (!onChange) { setError('Wait for file synchronization, then try again.'); setAction(null); return; }
         const command: TreeCommand = { operationId: crypto.randomUUID(), expectedVersion: 0, type: 'CREATE', entry: { id: crypto.randomUUID(), path: action.path + name, kind: action.type as 'FILE' | 'DIRECTORY' } };
         if (action.type === 'FILE') command.content = '';
@@ -81,8 +95,8 @@ export function RepositoryExplorer({ projectName, repository, onConnect, onChoos
   </nav>;
 }
 
-function InlineCreate({ kind, onCommit, onCancel }: { kind: 'FILE' | 'DIRECTORY'; onCommit: (name: string) => void; onCancel: () => void }) {
-  const [name, setName] = useState('');
+function InlineName({ kind, initialName = '', onCommit, onCancel }: { kind: 'FILE' | 'DIRECTORY'; initialName?: string; onCommit: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initialName);
   const input = useRef<HTMLInputElement>(null);
   const finished = useRef(false);
   const callbacks = useRef({ onCommit, onCancel });
@@ -99,11 +113,11 @@ function InlineCreate({ kind, onCommit, onCancel }: { kind: 'FILE' | 'DIRECTORY'
     document.addEventListener('pointerdown', outside, true);
     return () => document.removeEventListener('pointerdown', outside, true);
   }, []);
-  return <div className={`explorer-entry ${kind === 'FILE' ? 'explorer-file-entry' : ''}`}>
+  return <div onClick={(event) => event.stopPropagation()} className={`explorer-entry ${kind === 'FILE' ? 'explorer-file-entry' : ''}`}>
     <MaterialIcon name={name} directory={kind === 'DIRECTORY'} expanded={false} />
     <div className="explorer-name-field">
       <span className="explorer-name-measure" aria-hidden="true">{name || ' '}</span>
-      <input ref={input} autoFocus aria-label={kind === 'FILE' ? 'File name' : 'Folder name'} value={name} onChange={(event) => setName(event.target.value)} onBlur={commit} onKeyDown={(event) => {
+      <input ref={input} onFocus={(event) => event.currentTarget.select()} autoFocus aria-label={initialName ? `Rename ${initialName}` : kind === 'FILE' ? 'File name' : 'Folder name'} value={name} onChange={(event) => setName(event.target.value)} onBlur={commit} onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') { event.preventDefault(); commit(); }
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finished.current = true; callbacks.current.onCancel(); }

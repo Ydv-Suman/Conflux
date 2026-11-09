@@ -62,17 +62,17 @@ export function FileHistory({ scope, documentId, path, theme, onClose }: {
   return createPortal(<Modal title="File history" onClose={onClose} wide>
     <div className="file-history">
       <div className="file-history-toolbar"><strong title={page?.path ?? path}>{page?.path ?? path}{page?.deleted ? ' · Deleted' : ''}</strong><button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
-      <p className="file-history-note">Shared versions · local and unsynchronized changes are not included.</p>
-      {error ? <p role="alert">{error}</p> : !page ? <p role="status">Loading history…</p> : page.items.length === 0 ? <p role="status">No shared history recorded for this file.</p> : <div className="file-history-layout">
+      {error ? <p role="alert">{error}</p> : !page ? <p role="status">Loading history…</p> : page.items.length === 0 ? <p role="status">No versions yet. A version will appear after you edit and close this file.</p> : <div className="file-history-layout">
         <aside aria-label="File versions"><ol className="file-history-versions">{page.items.map(version => <li key={version.sequence}>
           <button type="button" aria-pressed={selected === version.sequence} onClick={() => setSelected(version.sequence)}>
-            <span className="file-history-version">Version {version.sequence}<time dateTime={version.timestamp}>{new Date(version.timestamp).toLocaleString()}</time></span>
+            <span className="file-history-version">Version {version.versionNumber ?? version.firstSequence ?? version.sequence}<time dateTime={version.timestamp}>{version.startedAt && version.startedAt !== version.timestamp && <>{new Date(version.startedAt).toLocaleString()} – </>}{new Date(version.timestamp).toLocaleString()}</time></span>
             <span>{versionLabel(version)}</span>
-            <span className="file-history-note">{version.kind === 'ATTRIBUTED_EDIT' ? 'Edited by' : 'Submitted by'} {account(version.actorId)}</span>
+            <span className="file-history-note">Created by {account(version.actorId)}</span>
+            {!!version.actorIds?.length && <span className="file-history-note">Contributors: {version.actorIds.map(account).join(', ')}</span>}
           </button>
         </li>)}</ol></aside>
         <section className="file-history-comparison" aria-label="Selected version">
-          {diffError ? <p role="alert">{diffError}</p> : diff ? <><div className="file-history-comparison-label">Before (v{diff.beforeSequence}) → After (v{diff.version.sequence})</div><HistoryDiff key={diff.version.sequence} diff={diff} theme={theme} /></> : <p role="status">Loading change…</p>}
+          {diffError ? <p role="alert">{diffError}</p> : diff ? <><div className="file-history-comparison-label">Before → After</div><HistoryDiff key={diff.version.sequence} diff={diff} theme={theme} /></> : <p role="status">Loading change…</p>}
         </section>
       </div>}
       <nav className="file-history-pagination" aria-label="History pages">

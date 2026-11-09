@@ -67,5 +67,19 @@ class DocumentJournalTests {
         }
     }
 
+    @Test void reachingDiskCapacityDoesNotEraseAcceptedUpdatesOrBlockOtherDocuments() throws Exception {
+        try (var journal = open()) {
+            byte[] update = new byte[DocumentJournal.MAX_UPDATE];
+            int accepted = 0;
+            while (true) {
+                try { journal.append(document, actor, update, accepted + 1); accepted++; }
+                catch (IOException limit) { break; }
+            }
+            assertEquals(15, accepted);
+            assertEquals(15, journal.read(document).size());
+            assertEquals(1, journal.append(new DocumentId(document.projectId(), document.workstreamId(), "other"), actor, new byte[]{0, 0}, 1).sequence());
+        }
+    }
+
     private DocumentJournal open() throws IOException { return new DocumentJournal(directory.toString()); }
 }

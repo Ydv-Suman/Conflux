@@ -16,7 +16,7 @@ RUN ./mvnw -q -DskipTests package
 FROM eclipse-temurin:25-jre-noble
 
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin conflux \
-    && install -d -m 0700 -o conflux -g conflux /app/documents
+    && install -d -m 0700 -o conflux -g conflux /app/documents /app/backups
 WORKDIR /app
 COPY --from=build --chmod=0444 /conflux/target/collaboration-service-*.jar app.jar
 COPY --from=validator /usr/local/bin/node /usr/local/bin/node

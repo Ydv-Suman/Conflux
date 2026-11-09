@@ -26,6 +26,12 @@ test('history and diff use authenticated exact-scope endpoints with stable seque
   assert.equal(calls[0][1], '/api/projects/p%20%2F/teams/t%3F/workstreams/w%23/documents/file%2Fone/history?before=37');
   assert.equal(calls[1][1], '/api/projects/p%20%2F/teams/t%3F/workstreams/w%23/documents/file%2Fone/history/15');
   assert.ok(calls.every(call => call[2] === 'GET'));
+  await api.getHistory(scope, 'file/one');
+  await api.createCheckpoint(scope, 'file/one', 'request', { afterOperationId: 'last-edit' });
+  assert.ok(calls[2][1].endsWith('/history'));
+  assert.ok(calls[3][1].endsWith('/history'));
+  assert.equal(calls[3][2], 'POST');
+  assert.deepEqual(calls[3][3], { requestId: 'request', afterOperationId: 'last-edit' });
 });
 test('legacy, migration, imported and unexpected records never claim verified authorship', () => {
   for (const kind of ['LEGACY_UPDATE', 'MIGRATION_BASELINE', 'IMPORTED_BASELINE', 'FUTURE_KIND'])
@@ -97,9 +103,33 @@ test('paging clears stale diffs, refresh revocation clears records, and late res
     revoked = true; tick();
     for (let i = 0; i < 2; i++) await flush();
     const html = renderToStaticMarkup(component.render());
-    assert.ok(html.includes('Access denied')); assert.ok(!html.includes('diff-3')); assert.ok(!html.includes('Edited by'));
+    assert.ok(html.includes('Access denied')); assert.ok(!html.includes('diff-3')); assert.ok(!html.includes('Created by'));
   } finally { component.unmount(); global.window = oldWindow; global.document = oldDocument; }
   assert.equal(removed, 1);
+});
+test('history only shows close checkpoints with stable numbers and all contributors', async () => {
+  const oldWindow = global.window, oldDocument = global.document;
+  global.document = { body: {} };
+  global.window = { setInterval: () => 1, clearInterval() {}, addEventListener() {}, removeEventListener() {} };
+  const diffs = [];
+  const version = { sequence: 10, firstSequence: 2, versionNumber: 2, timestamp: '2026-11-07T00:01:00Z', actorId: 'bob', actorIds: ['alice', 'bob'], kind: 'CHECKPOINT' };
+  const component = harness({
+    getHistory: async () => ({ path: 'main.py', items: [version], nextBefore: null }),
+    getVersionDiff: async (_scope, _doc, sequence) => {
+      diffs.push(sequence);
+      return { version, beforeSequence: 1, before: 'one', after: 'two' };
+    },
+  });
+  const flush = async () => { component.render(); component.effects(); await settle(); };
+  try {
+    for (let i = 0; i < 3; i++) await flush();
+    const html = renderToStaticMarkup(component.render());
+    assert.ok(html.includes('Created by bob')); assert.ok(html.includes('Contributors: alice, bob'));
+    assert.ok(!html.includes('Create version'));
+    assert.ok(html.includes('Version 2')); assert.ok(!html.includes('Version 10'));
+    assert.ok(!html.includes('checkbox')); assert.ok(!html.includes('Show individual edits'));
+    assert.deepEqual(diffs, [10]);
+  } finally { component.unmount(); global.window = oldWindow; global.document = oldDocument; }
 });
 test('Monaco comparison is read-only and releases both models and the editor', () => {
   let effect, options, disposed = 0, modelPair;

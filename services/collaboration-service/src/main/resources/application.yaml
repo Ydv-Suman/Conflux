@@ -11,3 +11,8 @@ app:
   identity-url: ${IDENTITY_API_URL:http://localhost:8080}
   workspace-url: ${WORKSPACE_API_URL:http://localhost:9000}
   document-directory: ${COLLABORATION_DATA_DIR:./.conflux/documents}
+  backup-directory: ${COLLABORATION_BACKUP_DIR:}
+  backup-enabled: ${COLLABORATION_BACKUP_ENABLED:true}
+  backup-cron: ${COLLABORATION_BACKUP_CRON:0 0 2 * * *}
+  backup-retention-days: ${COLLABORATION_BACKUP_RETENTION_DAYS:30}
+  backup-max-bytes: ${COLLABORATION_BACKUP_MAX_BYTES:2147483648}

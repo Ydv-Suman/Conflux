@@ -11,10 +11,14 @@ import { MonacoBinding } from 'y-monaco';
 import * as Y from 'yjs';
 import { COLLABORATION_WS_URL } from '../../config';
 import { getCurrentUser, getCollaborationToken } from '../auth/session';
-import { nativeDocumentStorage } from './documentStorage';
+import { nativeDocumentStorage, decodeUpdate, updateHash } from './documentStorage';
 import { createAutoSave } from './autoSave';
 import { languageForPath } from './editorLanguage';
 import { connectDocument, documentIdForPath, type ConnectionPhase, type DocumentConnectionState } from './documentConnection';
+import type { VersionQueue } from '../history/versionQueue';
+import { snapshotText } from './documentSnapshot';
+
+export type EditorVersionControl = { prepare: () => Promise<boolean> };
 
 self.MonacoEnvironment = { getWorker: (_moduleId, label) => label === 'json' ? new JsonWorker() : new EditorWorker() };
 
@@ -32,6 +36,8 @@ export function CollaborativeEditor({
   onDirtyChange,
   onConnectionChange,
   onSave,
+  versions,
+  onVersionControl,
 }: {
   projectId: string;
   workstreamId: string;
@@ -46,11 +52,13 @@ export function CollaborativeEditor({
   onDirtyChange: (dirty: boolean) => void;
   onConnectionChange: (phase: ConnectionPhase) => void;
   onSave: (content: string, previousContent: string) => Promise<void>;
+  versions: VersionQueue | null;
+  onVersionControl: (control: EditorVersionControl | null) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const callbacks = useRef({ onSave, onDirtyChange, onConnectionChange });
-  callbacks.current = { onSave, onDirtyChange, onConnectionChange };
+  const callbacks = useRef({ onSave, onDirtyChange, onConnectionChange, onVersionControl });
+  callbacks.current = { onSave, onDirtyChange, onConnectionChange, onVersionControl };
   const [connection, setConnection] = useState<DocumentConnectionState>({ phase: 'connecting', ready: false, pending: false, persisting: false, message: '' });
   const connectionRef = useRef<ReturnType<typeof connectDocument> | null>(null);
   const saveRef = useRef<(() => void) | null>(null);
@@ -84,6 +92,12 @@ export function CollaborativeEditor({
     let savedContent = initialContent;
     let safeToSave = false;
     let pending = false;
+    let baseline: string | undefined;
+    let synchronized = false;
+    let userEdited = false;
+    let closing = false, writable = false;
+    const target = { projectId, workstreamId, teamId, documentId: documentKey };
+    const versionSession = versions?.retain(target);
     const reportDirty = () => {
       const dirty = safeToSave && text.toString() !== savedContent;
       setLocalDirty(dirty);
@@ -96,10 +110,10 @@ export function CollaborativeEditor({
       onError: () => { setSaveError(true); },
       onSaving: setSaving,
     });
-    const documentChanged = () => { reportDirty(); autosave.changed(); };
+    const binding = new MonacoBinding(text, model, new Set([editor]));
+    const documentChanged = (_update: Uint8Array, origin: unknown) => { if (origin === binding) userEdited = true; reportDirty(); autosave.changed(); };
     doc.on('update', documentChanged);
     const blurListener = editor.onDidBlurEditorWidget(() => { void autosave.flush(); });
-    const binding = new MonacoBinding(text, model, new Set([editor]));
     const documentId = stableId ?? documentIdForPath(filePath);
     const endpoint = `${COLLABORATION_WS_URL}/ws/projects/${encodeURIComponent(projectId)}/workstreams/${encodeURIComponent(workstreamId)}/documents/${documentId}`;
     let disposed = false;
@@ -107,16 +121,39 @@ export function CollaborativeEditor({
       storage: nativeDocumentStorage(endpoint, teamId, getCurrentUser()!.id),
       onState: (state) => {
         if (disposed) return;
+        if (state.ready && !synchronized && !userEdited) baseline = text.toString();
+        if (state.phase === 'connected') synchronized = true;
+        versionSession?.update(state);
         safeToSave = state.ready;
         autosave.setReady(state.ready);
         pending = state.pending;
-        editor.updateOptions({ readOnly: !state.ready || state.writable === false || state.phase === 'denied' || state.phase === 'error' });
+        writable = state.ready && state.writable !== false && state.phase !== 'denied' && state.phase !== 'error';
+        editor.updateOptions({ readOnly: closing || !writable });
         setConnection(state);
         callbacks.current.onConnectionChange(state.phase);
         reportDirty();
       },
     });
     connectionRef.current = connection;
+    callbacks.current.onVersionControl({ prepare: async () => {
+      closing = true; editor.updateOptions({ readOnly: true });
+      try {
+        await autosave.flush();
+        const stored = await connection.persist();
+        if (safeToSave && text.toString() !== savedContent) throw new Error('The local file could not be saved. Keep it open and retry Save locally.');
+        const content = stored ? snapshotText(stored.snapshot) : text.toString();
+        if (baseline === undefined || content === baseline) return false;
+        if (!versions) throw new Error('Version recovery is not ready. Keep this file open and retry.');
+        const pending = stored?.pending.at(-1);
+        const boundary = pending === undefined ? { afterSequence: stored?.sequence } : typeof pending === 'string' ? { afterHash: await updateHash(decodeUpdate(pending)) } : { afterOperationId: pending.operationId };
+        await versions.enqueue({ ...target, ...boundary });
+        baseline = content;
+        return true;
+      } catch (cause) {
+        closing = false; editor.updateOptions({ readOnly: !writable });
+        throw cause;
+      }
+    } });
     const save = () => { void autosave.flush(); };
     saveRef.current = save;
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
@@ -126,6 +163,8 @@ export function CollaborativeEditor({
       autosave.dispose();
       blurListener.dispose();
       connection.dispose();
+      versionSession?.release();
+      callbacks.current.onVersionControl(null);
       connectionRef.current = null;
       saveRef.current = null;
       doc.off('update', documentChanged);
@@ -135,7 +174,7 @@ export function CollaborativeEditor({
       model.dispose();
       doc.destroy();
     };
-  }, [documentKey, projectId, workstreamId, teamId]);
+  }, [documentKey, projectId, workstreamId, teamId, versions]);
 
   useEffect(() => { monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs'); }, [theme]);
   useEffect(() => {
