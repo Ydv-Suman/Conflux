@@ -61,7 +61,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                         catch (RuntimeException invalid) { return close(session, new DocumentAuthorization.Denied(4401)); }
                         var credentials = new DocumentAuthorization.Credentials(handshake.teamId(), handshake.token());
                         return authorization.authorize(document, credentials)
-                                .flatMap(actor -> Mono.fromCallable(() -> join(document, session.getId(), actor, Boolean.TRUE.equals(handshake.acknowledgements()), handshake.protocol(), handshake.registrationId(), Boolean.TRUE.equals(handshake.migrateLegacy())))
+                                .flatMap(actor -> Mono.fromCallable(() -> join(document, session.getId(), actor, Boolean.TRUE.equals(handshake.acknowledgements()), handshake.protocol(), handshake.registrationId(), Boolean.TRUE.equals(handshake.migrateLegacy()), Boolean.TRUE.equals(handshake.checkpoints())))
                                         .subscribeOn(Schedulers.boundedElastic()))
                                 .flatMap(connection -> {
                                     Mono<Void> receive = incoming.skip(1).concatMap(update -> Mono.defer(() -> {
@@ -107,7 +107,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                         : "Collaboration unavailable; reconnect to recover"))).cache();
     }
 
-    private synchronized Connection join(DocumentId document, String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId, boolean migrateLegacy) throws IOException {
+    private synchronized Connection join(DocumentId document, String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId, boolean migrateLegacy, boolean checkpoints) throws IOException {
         if (protocol != null && protocol != 1 && protocol != 2) throw new IllegalArgumentException();
         if (Integer.valueOf(2).equals(protocol) && registrationId == null) throw new IllegalArgumentException();
         Room room = rooms.get(document);
@@ -125,7 +125,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
             room = new Room(document, history, attributed, migrationBlocked);
             rooms.put(document, room);
         }
-        try { return room.join(id, actor, acknowledgements, protocol, registrationId); }
+        try { return room.join(id, actor, acknowledgements, protocol, registrationId, checkpoints); }
         catch (IOException | RuntimeException failure) {
             if (room.clients.isEmpty()) rooms.remove(document, room);
             throw failure;
@@ -158,7 +158,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
             this.history = new ArrayList<>(history);
         }
 
-        synchronized Connection join(String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId) throws IOException {
+        synchronized Connection join(String id, UUID actor, boolean acknowledgements, Integer protocol, UUID registrationId, boolean checkpoints) throws IOException {
             if (attributed && !Integer.valueOf(2).equals(protocol)) {
                 if (history.stream().anyMatch(entry -> entry.attribution() != null && entry.attribution().importedWriters() != null))
                     throw new LegacyRecoveryRequired();
@@ -177,13 +177,13 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                         + "\",\"writerId\":" + binding.writerId() + "}"));
             }
             history.forEach(entry -> replay.add(new Frame(false, entry.update())));
-            if (!history.isEmpty()) replay.add(Frame.SYNCED);
+            if (!history.isEmpty()) replay.add(checkpoints ? textFrame("{\"type\":\"synced\",\"sequence\":" + history.size() + "}") : Frame.SYNCED);
             else if (initializer == null) {
                 initializer = id;
                 initializationStarted = System.nanoTime();
                 replay.add(Frame.INITIALIZE);
             }
-            Connection connection = new Connection(this, id, actor, replay, acknowledgements || attributed);
+            Connection connection = new Connection(this, id, actor, replay, acknowledgements || attributed, checkpoints);
             clients.put(id, connection);
             return connection;
         }
@@ -205,8 +205,8 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                 throw new IllegalStateException("Cannot persist document update", error);
             }
             clients.values().forEach(client -> {
-                if (!client.id.equals(sender.id)) client.emit(new Frame(false, bytes));
-                if (initializing) client.emit(Frame.SYNCED);
+                if (!client.id.equals(sender.id)) client.update(bytes, history.getLast().sequence());
+                if (initializing) client.synced(history.getLast().sequence());
             });
             initializer = null;
             sender.acknowledge(history.getLast());
@@ -235,8 +235,8 @@ public final class DocumentRelayHandler implements WebSocketHandler {
                 if (saved.sequence() != history.size() + 1) throw new IllegalStateException("Stale room history");
                 history.add(saved);
                 clients.values().forEach(client -> {
-                    if (!client.id.equals(sender.id)) client.emit(new Frame(false, saved.update()));
-                    if (initializing) client.emit(Frame.SYNCED);
+                    if (!client.id.equals(sender.id)) client.update(saved.update(), saved.sequence());
+                    if (initializing) client.synced(saved.sequence());
                 });
                 initializer = null;
             }
@@ -269,17 +269,23 @@ public final class DocumentRelayHandler implements WebSocketHandler {
         final String id;
         final UUID actor;
         final boolean acknowledgements;
+        final boolean checkpoints;
         final List<Frame> replay;
         final AtomicLong queuedBytes = new AtomicLong();
         final Sinks.Empty<Void> failure = Sinks.empty();
         final Sinks.Many<Frame> outbound = Sinks.many().unicast().onBackpressureBuffer(new ArrayBlockingQueue<>(64));
-        Connection(Room room, String id, UUID actor, List<Frame> replay, boolean acknowledgements) {
+        Connection(Room room, String id, UUID actor, List<Frame> replay, boolean acknowledgements, boolean checkpoints) {
             this.room = room; this.id = id; this.actor = actor; this.replay = replay;
-            this.acknowledgements = acknowledgements;
+            this.acknowledgements = acknowledgements; this.checkpoints = checkpoints;
         }
         Flux<Frame> updates() {
             return Flux.concat(Flux.fromIterable(replay), outbound.asFlux()
                     .doOnNext(frame -> queuedBytes.addAndGet(-frame.bytes.length)));
+        }
+        void synced(int sequence) { emit(checkpoints ? textFrame("{\"type\":\"synced\",\"sequence\":" + sequence + "}") : Frame.SYNCED); }
+        void update(byte[] update, int sequence) {
+            if (checkpoints) emit(textFrame("{\"type\":\"revision\",\"sequence\":" + sequence + "}"));
+            emit(new Frame(false, update));
         }
         void acknowledge(DocumentJournal.Entry entry) {
             if (!acknowledgements) return;
@@ -304,7 +310,7 @@ public final class DocumentRelayHandler implements WebSocketHandler {
 
     private static Frame textFrame(String value) { return new Frame(true, value.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
 
-    private record Handshake(UUID teamId, String token, Boolean acknowledgements, Integer protocol, UUID registrationId, Boolean migrateLegacy) {
+    private record Handshake(UUID teamId, String token, Boolean acknowledgements, Integer protocol, UUID registrationId, Boolean migrateLegacy, Boolean checkpoints) {
         @Override public String toString() { return "Handshake[redacted]"; }
     }
 

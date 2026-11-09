@@ -46,6 +46,8 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
   let snapshot = encodeUpdate(Y.encodeStateAsUpdate(doc));
   const outbox = new Map<string, string>();
   let inFlight: string | undefined;
+  let appliedSequence = 0, snapshotSequence = 0;
+  let remoteSequence: number | undefined;
   let phase: ConnectionPhase = 'connecting';
   let message = '';
   const report = (next = phase, detail = message) => {
@@ -61,8 +63,8 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
   };
   const fail = (detail: string) => { stopSocket(); report('error', detail); };
   const save = () => storage.save(protocol === 2
-    ? { version: 2, snapshot, pending: [...edits.values()], ready: storedReady, writerId, registrationId }
-    : { version: 1, snapshot, pending: [...outbox.values()], ready: storedReady });
+    ? { version: 2, snapshot, pending: [...edits.values()], ready: storedReady, writerId, registrationId, sequence: snapshotSequence }
+    : { version: 1, snapshot, pending: [...outbox.values()], ready: storedReady, sequence: snapshotSequence });
   const legacy = () => {
     if (requiresV2 || edits.size) throw new Error('Attributed recovery requires protocol 2');
     protocol = 1; selected = true;
@@ -114,11 +116,12 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
   const record = (update?: Uint8Array, initialize = false) => {
     const captured = encodeUpdate(Y.encodeStateAsUpdate(doc));
     const bytes = update && Uint8Array.from(update);
+    const capturedSequence = appliedSequence;
     const attempt = generation;
     const editWriter = writerId;
     const operationId = crypto.randomUUID();
     return queue(async () => {
-      snapshot = captured;
+      snapshot = captured; snapshotSequence = Math.max(snapshotSequence, capturedSequence);
       const hash = bytes && await updateHash(bytes);
       if (protocol === 2) {
         let edit = initialize ? [...edits.values()].find((item) => item.kind === 'seed') : undefined;
@@ -147,6 +150,7 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
   const connect = async (rejectedToken?: string) => {
     stopSocket();
     const attempt = generation;
+    remoteSequence = undefined;
     upgradingLegacy = protocol === 1 && initialContent.length <= 100_000 && outbox.size === 0 && writes === 0;
     const offerV2 = protocol === 2 || upgradingLegacy;
     report(ready ? 'reconnecting' : 'connecting', '');
@@ -169,7 +173,7 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
     current.addEventListener('open', () => {
       if (!active()) return;
       report('syncing', '');
-      try { current.send(JSON.stringify({ teamId, token, acknowledgements: true,
+      try { current.send(JSON.stringify({ teamId, token, acknowledgements: true, checkpoints: true,
         ...(offerV2 ? { protocol: 2, registrationId, migrateLegacy: true } : {}) })); }
       catch { current.close(); }
     });
@@ -182,12 +186,17 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
         if (event.data instanceof ArrayBuffer && event.data.byteLength > 0) {
           if (!selected) legacy();
           receivedHistory = true; seeded = true;
+          if (remoteSequence !== undefined) { appliedSequence = Math.max(appliedSequence, remoteSequence); remoteSequence = undefined; }
           Y.applyUpdate(doc, new Uint8Array(event.data), remote);
           return;
         }
         if (typeof event.data !== 'string') throw new Error('Unexpected message');
         const control = JSON.parse(event.data) as { type?: string; sha256?: string; sequence?: number;
           version?: number; writerId?: number; requestId?: string; operationId?: string; initialOperationId?: string; migrationBlocked?: boolean } | null;
+        if (control?.type === 'revision') {
+          if (!Number.isSafeInteger(control.sequence) || control.sequence! < 1 || remoteSequence !== undefined) throw new Error('Invalid revision');
+          remoteSequence = control.sequence; return;
+        }
         if (control?.type === 'protocol' && phase === 'syncing') {
           if (control.version === 1) { legacy(); upgradingLegacy = false;
             if (control.migrationBlocked) migrationMessage = 'This file remains on legacy editing because its history is not supported by attribution. Your edits still synchronize, but contribution totals are unavailable.';
@@ -228,9 +237,12 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
           if (!selected) legacy();
           if (protocol === 2 && writerId === undefined) throw new Error('Missing writer');
           replayComplete = true;
+          if (control.sequence !== undefined && (!Number.isSafeInteger(control.sequence) || control.sequence < 0)) throw new Error('Invalid synchronized revision');
+          const sequence = control.sequence ?? appliedSequence;
+          appliedSequence = Math.max(appliedSequence, sequence);
           clearTimeout(handshakeTimer);
           void queue(async () => {
-            storedReady = true;
+            storedReady = true; snapshotSequence = Math.max(snapshotSequence, sequence);
             await save();
             if (!active()) return;
             ready = true; seeded = true; retryCount = 0; refreshed = false;
@@ -246,6 +258,7 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
               const edit = edits.get(operation);
               if (!edit || edit.sha256 !== hash || edit.writerId !== control.writerId) return;
               edits.delete(operation);
+              appliedSequence = Math.max(appliedSequence, control.sequence!); snapshotSequence = Math.max(snapshotSequence, control.sequence!);
               await save();
               if (!active()) return;
               if (inFlight === operation) { inFlight = undefined; clearTimeout(receiptTimer); }
@@ -257,6 +270,7 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
             // Unknown/duplicate receipts cannot clear other pending edits.
             if (!outbox.has(hash)) return;
             outbox.delete(hash);
+            appliedSequence = Math.max(appliedSequence, control.sequence!); snapshotSequence = Math.max(snapshotSequence, control.sequence!);
             await save();
             if (!active()) return;
             if (inFlight === hash) { inFlight = undefined; clearTimeout(receiptTimer); }
@@ -319,6 +333,8 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
             edits.set(edit.operationId, edit);
           }
         }
+        if (value.sequence !== undefined && (!Number.isSafeInteger(value.sequence) || value.sequence < 0)) throw new Error('Invalid recovered revision');
+        appliedSequence = snapshotSequence = value.sequence ?? 0;
         snapshot = encodeUpdate(Y.encodeStateAsUpdate(doc));
         storedReady = value.ready; ready = value.ready; seeded = true;
       }
@@ -329,6 +345,11 @@ export function connectDocument({ doc, endpoint, teamId, initialContent, getToke
   };
   void start();
   return {
+    async persist() {
+      const saved = await serializeDocument(storage, () => storage.load());
+      if (!loaded || storageFailed) throw new Error('Document recovery is not saved yet. Keep this file open and retry.');
+      return saved;
+    },
     retry() {
       if (disposed) return;
       refreshed = false; retryCount = 0;

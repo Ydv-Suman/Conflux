@@ -22,11 +22,13 @@ class ContributionController {
     private final DocumentAuthorization authorization;
     private final DocumentJournal journal;
     private final FileTreeStore tree;
+    private final DocumentUpdateValidator validator;
 
-    ContributionController(DocumentAuthorization authorization, DocumentJournal journal, FileTreeStore tree) {
+    ContributionController(DocumentAuthorization authorization, DocumentJournal journal, FileTreeStore tree, DocumentUpdateValidator validator) {
         this.authorization = authorization;
         this.journal = journal;
         this.tree = tree;
+        this.validator = validator;
     }
 
     @GetMapping
@@ -115,16 +117,24 @@ class ContributionController {
         return authorized(projectId, teamId, workstreamId, header, () -> {
             if (sequence < 1 || tree.documents(projectId, workstreamId).stream().noneMatch(file -> file.id().equals(documentId)))
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            var entries = journal.read(new DocumentId(projectId, workstreamId, documentId));
+            var document = new DocumentId(projectId, workstreamId, documentId);
+            var entries = journal.read(document);
             var entry = entries.stream().filter(item -> item.sequence() == sequence).findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
             if (entry.attribution() == null || entry.attribution().imported() || !entry.attribution().changed())
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            var previous = entries.stream().filter(item -> item.sequence() == sequence - 1).findFirst();
-            byte[] before = previous.map(item -> item.attribution().snapshot()).orElse(new byte[]{0, 0});
+            int index = entries.indexOf(entry);
+            byte[] before = snapshot(document, entries, index - 1);
+            byte[] after = snapshot(document, entries, index);
             return new Evidence(entry.sequence(), entry.actorId(), entry.timestamp(), entry.attribution().operationId(),
-                    Base64.getEncoder().encodeToString(before), Base64.getEncoder().encodeToString(entry.attribution().snapshot()));
+                    Base64.getEncoder().encodeToString(before), Base64.getEncoder().encodeToString(after));
         });
+    }
+
+    private byte[] snapshot(DocumentId document, List<DocumentJournal.Entry> entries, int index) {
+        if (index < 0) return new byte[]{0, 0};
+        var attribution = entries.get(index).attribution();
+        return attribution != null && attribution.snapshot() != null ? attribution.snapshot() : journal.snapshot(document, entries, index, validator);
     }
 
     private <T> Mono<T> authorized(UUID project, UUID team, UUID stream, String header, Callable<T> read) {

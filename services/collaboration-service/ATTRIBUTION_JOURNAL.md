@@ -2,7 +2,7 @@
 
 Implemented and connected through the [version 2 protocol](ATTRIBUTION_PROTOCOL.md)
 for eligible new desktop documents. This foundation adds authenticated writer registration, atomic edit/provenance persistence,
-and restart-safe retries. The separate [edit dashboard](../../docs/contribution-attribution.md#implemented-edit-dashboard) reads these records for restricted admin/lead reports and evidence; ordinary shared history UI remains planned.
+and restart-safe retries. The separate [edit dashboard](../../docs/contribution-attribution.md#implemented-edit-dashboard) reads these records for restricted admin/lead reports and evidence; the ordinary shared history UI shows close-file checkpoints with read-only range diffs and no individual-update view.
 
 ## Internal flow
 
@@ -58,6 +58,7 @@ still has a single-instance writer lock.
 | --- | --- | --- |
 | Legacy | Positive signed 32-bit byte length, body, CRC32C | Actor UUID, server epoch milliseconds, opaque update |
 | Version 2 | Negative signed 32-bit byte length, body, CRC32C | JSON with `version: 2` and exactly one binding or edit |
+| Version 3 | Same framing as version 2 | JSON with `version: 3`; exact edits/provenance and periodic full snapshots, nullable intermediate snapshot; or a close-checkpoint/idempotent close receipt |
 
 Version 2 bindings store actor, registration UUID, writer ID, and server time.
 Version 2 edits store document sequence, actor, server time, exact update bytes,
@@ -100,16 +101,37 @@ must never happen automatically.
 The existing 32 MiB per-document journal and 10,000-record limits include bindings,
 snapshots, and no-effect receipts. Each version 2 body is limited to 8 MiB; binary
 updates and snapshots remain limited to 2 MiB each. Limit failures return no
-receipt and do not delete accepted history. The initial implementation stores a
-snapshot per edit and replays the bounded journal on requests; storage growth and
-latency must be measured before enabling sustained collaborative editing.
+receipt and do not delete accepted history. Version 3 stores the exact update and attribution on every edit, with a full
+snapshot for the first edit, imports, every 100th sequence, or after 1 MiB of
+updates since the previous checkpoint. Missing snapshots are reconstructed from
+the closest checkpoint and its update tail. Older version 2 journals compact
+atomically on their next versioned append, preserving sequences, timestamps,
+operation IDs, original update bytes, writer bindings, and provenance. Version 1
+bytes remain unchanged. A bounded 64 MiB / 32-document cache is disposable and
+validates file identity, length, and modification time before reuse.
 
 Socket envelopes and desktop writer/pending-envelope persistence are implemented.
 Legacy import and restricted edit reporting are implemented. Self-records, audited
-corrections, ordinary shared-history UI, and sustained-load validation remain pending.
+corrections remain pending. Shared history uses a separate bounded, incrementally
+maintained metadata index. Daily verified backups retain 30 days of archives;
+live records and retry receipts are not deleted by retention. See
+[storage operations and validation](STORAGE_OPERATIONS.md) for recovery, benchmarks,
+format rollout, and remaining production limits.
 
 Tests cover real Yjs two-writer snapshots, deletion replay, restarts, stable
 receipts, writer spoofing, cross-document rejection, legacy compatibility,
 corruption/incomplete tails, failed persistence, concurrent stale validation,
 mutable input/output buffers, and authorization revocation. Run `./mvnw test`
 after installing the validator dependencies as described in its README.
+
+## Visible close versions
+
+A version 3 checkpoint has exactly one `checkpoint` payload, with no edit or
+writer binding. It records a persisted close request, authenticated creator,
+content hash, version number, and exact update boundaries. `created: false`
+retains an idempotent receipt for an unchanged shared state without adding a
+visible version. Checkpoints do not advance update sequences, claim authorship,
+or negotiate legacy documents into attributed editing. Actor-bound pending
+operation references and accepted sequence references prevent a later editing
+session from changing an earlier close's version. Raw update retries retain their
+original sequence and receipt after interleaved checkpoint records and restarts.

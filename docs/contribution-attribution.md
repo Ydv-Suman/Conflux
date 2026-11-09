@@ -160,9 +160,25 @@ restarts, and token refresh cannot create new operation IDs for the same edit.
 
 Ordinary document history is implemented with bounded sequence pagination, exact
 version references, read-only before/after diffs, provenance status, and explicit
-unknowns. Open a shared file and click History beside the editor tabs. A rename
+unknowns. Open a shared file and click the File history clock icon beside the editor tabs. A rename
 keeps the stable document ID. Deletion retains history subject to access and
 retention policy; recreating a path is not automatically the same document.
+
+Visible history consists only of durable close-file checkpoints. Typing, pasting,
+autosave, idle time, and an unclosed editing session produce no visible version.
+The desktop compares each file with its own opening baseline and persists a close
+request before removing a changed tab. Unchanged files and net-undone edits do
+not request a version. Shared identical content is deduplicated on the backend;
+request IDs make retry receipts stable after restart. Offline close boundaries
+use the last pending operation/hash or the exact saved accepted sequence, so a
+later reopening cannot extend an earlier close's version. Pending requests retry
+in the background after document synchronization, scoped to the original account.
+
+The creator is the authenticated member who closed the file; contributors are
+computed independently from the accepted updates in the saved range. Legacy
+changes remain unknown-authorship. No manual-version button or individual-edit
+view is exposed. Raw updates and no-effect receipts remain durable for recovery
+and attribution; storage snapshots are not visible versions.
 
 Implement separate centrally managed capabilities for team reports and
 correction resolution, granted only to admins/team leads in scope. Members can

@@ -6,8 +6,9 @@ import type { TeamPresenceState } from '../teams/presenceConnection';
 export const fileTabId = (path: string) => `file-tab-${encodeURIComponent(path)}`;
 export const filePanelId = (path: string) => `file-panel-${encodeURIComponent(path)}`;
 
-export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence, onHistory }: {
+export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence, onHistory, busyPaths = [] }: {
   onHistory?: () => void;
+  busyPaths?: string[];
   presence: TeamPresenceState | null; onRetryPresence: () => void;
   files: EditorFile[]; activePath: string | null; onSelect: (path: string) => void; onClose: (file: EditorFile) => void;
 }) {
@@ -27,10 +28,10 @@ export function FileTabs({ files, activePath, onSelect, onClose, presence, onRet
         event.preventDefault(); onSelect(files[next].path);
         bar.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
       }}><span>{file.path.split('/').pop()}</span>{file.dirty && <span className="file-tab-dirty" aria-label="Unsaved changes">●</span>}</button>
-      <button className="file-tab-close" type="button" aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
+      <button className="file-tab-close" type="button" disabled={busyPaths.includes(file.path)} aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
     </div>)}
   </div>
-    {onHistory && <button type="button" className="file-history-trigger" onClick={onHistory}>History</button>}
+    {onHistory && <button type="button" className="file-history-trigger" aria-label="File history" title="File history" onClick={onHistory}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2" /></svg></button>}
     <TeamPresenceIndicator key={presence?.teamId} presence={presence} onRetry={onRetryPresence} />
   </div>;
 }

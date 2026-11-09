@@ -19,7 +19,7 @@ public class ReportingWebConfig implements WebFluxConfigurer {
                 "/api/projects/{project}/teams/{team}/workstreams/{stream}/contributions/**",
                 "/api/projects/{project}/teams/{team}/workstreams/{stream}/documents/{document}/history/**")) {
             registry.addMapping(path).allowedOrigins(origins.toArray(String[]::new))
-                    .allowedMethods("GET").allowedHeaders("Authorization", "Content-Type", "Accept")
+                    .allowedMethods(path.contains("/history/") ? new String[]{"GET", "POST"} : new String[]{"GET"}).allowedHeaders("Authorization", "Content-Type", "Accept")
                     .allowCredentials(false).maxAge(300);
         }
     }

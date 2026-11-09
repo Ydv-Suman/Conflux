@@ -125,7 +125,9 @@ Each document has a hashed filename containing an append journal of actor UUID, 
 
 Limits: 2 MiB per message, 32 MiB or 10,000 records per document, 32 active rooms, 32 participants per room, and 64 queued messages / 4 MiB per participant. Slow clients are disconnected; empty rooms are evicted from memory. On reaching a document history limit, updates are rejected without deleting earlier edits. Storage failures disconnect the affected room so its next session reloads durable history.
 
-This is a bounded single-instance implementation. CRDT compaction, aggregate disk quotas, multi-instance fanout/shared storage, per-line attribution, Git checkpoint coordination, and automatic desktop reconnect are not implemented here. Legacy binary Yjs payloads remain opaque to the relay; negotiated version 2 updates use the server-side validator before persistence. Backend tests exercise simultaneous relay, access checks and revocation, replay, initialization handoff, attribution, and journal recovery; a two-desktop Yjs convergence test remains part of the desktop update.
+Version 3 uses incremental updates and periodic snapshots; old snapshot-per-edit records compact atomically on their next versioned write. Warm journal reads and grouped history use bounded, rebuildable indexes. Daily verified backups retain 30 days of archives. See [storage operations](STORAGE_OPERATIONS.md) for configuration, restore, measured load results, and format compatibility.
+
+This remains a bounded single-instance implementation. CRDT garbage collection, aggregate disk quotas, multi-instance fanout/shared storage, per-line attribution, Git checkpoint coordination, and automatic desktop reconnect are not implemented here. Legacy binary Yjs payloads remain opaque to the relay; negotiated version 2 updates use the server-side validator before persistence. Backend tests exercise simultaneous relay, access checks and revocation, replay, initialization handoff, attribution, and journal recovery; a two-desktop Yjs convergence test remains part of the desktop update.
 
 Run backend checks with `./mvnw test`.
 
@@ -176,6 +178,6 @@ Set `CORS_ALLOWED_ORIGINS` to a comma-separated list of exact client origins;
 the default is `http://localhost:5173`. For packaged desktop use, explicitly add
 its platform origin (for example `tauri://localhost` on macOS). Cookies are not
 used by this API; it requires bearer authentication. Deploy this service and
-restart/rebuild the desktop after updating. No journal migration is needed.
+restart/rebuild the desktop after updating. Version 1/2 journals are readable; version 2 compacts to version 3 on the next write. Older service binaries cannot read version 3: take a verified backup before upgrade and restore that backup for a binary rollback.
 Reports are bounded prototype scans, not a global reporting index; native UI
 validation and sustained-load profiling remain necessary before broad rollout.

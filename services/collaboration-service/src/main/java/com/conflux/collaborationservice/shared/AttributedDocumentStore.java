@@ -90,6 +90,10 @@ public final class AttributedDocumentStore {
             if (imported && before.sequence != 0) throw new IllegalArgumentException("Document already initialized");
         }
         // Validation is expensive and must not block journals for unrelated documents.
+        if (before.snapshot == null) {
+            var entries = journal.read(document);
+            before.snapshot = journal.snapshot(document, entries, before.sequence - 1, validator);
+        }
         var result = validator.validate(before.snapshot, captured, writerId);
         var attribution = new DocumentJournal.Attribution(operationId, writerId,
                 Base64.getDecoder().decode(result.snapshot()), imported ? List.of() : ranges(result.inserted()),
@@ -118,12 +122,12 @@ public final class AttributedDocumentStore {
     }
 
     private State state(DocumentId document) throws IOException {
-        // shortcut: replay the bounded journal per request; add a recoverable cache before high-volume use.
         if (document == null || document.projectId() == null || document.workstreamId() == null
                 || document.documentId() == null || !document.documentId().matches("[A-Za-z0-9._-]{1,128}"))
             throw new IllegalArgumentException("Invalid document scope");
         var result = new State();
         for (var record : journal.readRecords(document)) {
+            if (record.checkpoint() != null) continue;
             if (record.version() == 1) {
                 result.sequence = record.entry().sequence();
                 result.legacy = true;

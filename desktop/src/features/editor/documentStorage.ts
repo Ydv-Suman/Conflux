@@ -1,15 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export type PendingEdit = { operationId: string; writerId: number; kind: 'seed' | 'edit'; update: string; sha256: string };
-export type StoredDocument = { version: 1; snapshot: string; pending: string[]; ready: boolean }
-  | { version: 2; snapshot: string; pending: PendingEdit[]; ready: boolean; writerId?: number; registrationId: string };
+export type StoredDocument = { version: 1; snapshot: string; pending: string[]; ready: boolean; sequence?: number }
+  | { version: 2; snapshot: string; pending: PendingEdit[]; ready: boolean; writerId?: number; registrationId: string; sequence?: number };
 export type DocumentStorage = { load: () => Promise<StoredDocument | null>; save: (value: StoredDocument) => Promise<void> };
 
 // Reopening a tab must wait for the previous instance's queued writes, including hashing.
 const queues = new WeakMap<DocumentStorage, Promise<void>>();
-export function serializeDocument(storage: DocumentStorage, action: () => Promise<void>) {
+export function serializeDocument<T>(storage: DocumentStorage, action: () => Promise<T>) {
   const task = (queues.get(storage) ?? Promise.resolve()).then(action);
-  queues.set(storage, task.catch(() => {}));
+  queues.set(storage, task.then(() => {}, () => {}));
   return task;
 }
 

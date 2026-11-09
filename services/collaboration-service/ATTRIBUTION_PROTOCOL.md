@@ -132,3 +132,22 @@ competing initial baselines. CI installs both dependency sets.
 Manual native-desktop validation and sustained-load profiling remain to be done.
 Ordinary shared history APIs/UI, self-records, and corrections are not part of this
 protocol change.
+
+## Optional close-checkpoint boundaries
+
+Desktop handshakes add `"checkpoints": true` independently of attribution protocol
+selection. For those clients, the final `synced` control includes the committed
+`sequence`, and each subsequent peer binary update is preceded by
+`{"type":"revision","sequence":N}`. The binary update and sequence are persisted
+together in local recovery. Own acknowledgements advance the saved accepted
+sequence only after their matching pending edit is durably cleared. Legacy clients
+without this flag retain their original frames. These revision controls describe
+recovery boundaries, not visible versions.
+
+Closing a changed tab persists a separate request UUID with the final pending
+operation ID (or legacy update SHA-256), or its exact accepted sequence when all
+updates are acknowledged. After synchronization, `POST .../history` publishes a
+fixed close checkpoint. Time passing, autosave, and individual updates never create
+visible versions. Close requests require current edit access, and history reads
+retain their separate read authorization. Repeated or concurrent closes of the
+same content have stable no-change receipts without duplicate versions.

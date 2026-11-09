@@ -10,6 +10,12 @@ export function SharedWorkspaceSetup({ stream, repository, desktop, canInitializ
   onRetry: () => void; onExplore: () => void;
 }) {
   const ready = isRepositoryReady(stream);
+  if (desktop && ready && repository && !busy && !error) return <section className="grid h-full min-h-80 place-items-center px-7 py-8 text-center">
+    <div>
+      <h1 className="m-0 text-3xl font-bold tracking-[-.04em]">Welcome to Conflux</h1>
+      <p className="mb-0 mt-2 text-sm text-[#6d716b]">Create or open a file in Explorer to get started.</p>
+    </div>
+  </section>;
   const dirtySharedBranch = repository?.modified && repository.branch === stream.branchName;
   const separateSnapshot = repository?.modified && repository.branch !== stream.branchName;
   const branchConflict = repository?.branches.includes(stream.branchName) && repository.branch !== stream.branchName;

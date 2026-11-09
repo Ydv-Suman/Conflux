@@ -1,3 +1,4 @@
+import { useVersionQueue } from '../features/history/useVersionQueue';
 import { PanelHeader } from '../components/PanelHeader';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
@@ -54,6 +55,7 @@ import type { Confirmation, Dialog, Panel, RequestError } from './workspaceTypes
 
 export function Workspace() {
   const invitationInbox = useInvitationInbox();
+  const versions = useVersionQueue();
   const [invitationRevision, setInvitationRevision] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const downloadLock = useRef(false);
@@ -210,9 +212,10 @@ export function Workspace() {
   const contributionLink = !loading && project && team && contributionStream?.teamId === team.teamId
     ? <ContributionsButton key={`${project.projectId}/${team.teamId}/${contributionStream.workstreamId}`} scope={{ projectId: project.projectId, teamId: team.teamId, workstreamId: contributionStream.workstreamId }} capabilities={capabilities} /> : null;
 
+  const versionNotice = (versions.status.pending > 0 || versions.status.message) && <div className="px-4 py-2 text-sm" role="status">{versions.status.message || `${versions.status.pending} version${versions.status.pending === 1 ? '' : 's'} pending synchronization.`} <button className="underline" type="button" onClick={() => versions.queue?.retry()}>Retry versions</button></div>;
   const workspaceContent = loading ? <p className="p-7" role="status">Loading team workspace…</p> : activeWorkstream && project ? <div className="flex h-full flex-col">
 
-    <div className="min-h-0 flex-1">{openFile && repository && !repositoryError && openFile.documentId && isRepositoryReady(activeWorkstream) ? <EditorWorkspace onRetryPresence={retryPresence} presence={presence} key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} teamId={activeWorkstream.teamId} file={openFile} entries={treeSync.entries} treeReady={treeSync.manifestReady} onDirtyPathsChange={(paths) => { dirtyPaths.current = paths; }} theme={theme} fontSize={fontPreferences.editor} fontFamily={fontFamilyCss(EDITOR_FONT_FAMILIES, fontPreferences.editorFamily)} onDirtyStateChange={(dirty) => { pendingWorkspace.current = dirty; }} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
+    {versionNotice}<div className="min-h-0 flex-1">{openFile && repository && !repositoryError && openFile.documentId && isRepositoryReady(activeWorkstream) ? <EditorWorkspace versions={versions.queue} onRetryPresence={retryPresence} presence={presence} key={`${project.projectId}/${activeWorkstream.workstreamId}`} projectId={project.projectId} workstreamId={activeWorkstream.workstreamId} teamId={activeWorkstream.teamId} file={openFile} entries={treeSync.entries} treeReady={treeSync.manifestReady} onDirtyPathsChange={(paths) => { dirtyPaths.current = paths; }} theme={theme} fontSize={fontPreferences.editor} fontFamily={fontFamilyCss(EDITOR_FONT_FAMILIES, fontPreferences.editorFamily)} onDirtyStateChange={(dirty) => { pendingWorkspace.current = dirty; }} onSave={saveRepositoryFile} onEmpty={() => setOpenFile(null)} onActivate={async (path) => { try { await rememberOpenFile(project.projectId, activeWorkstream.workstreamId, path); } catch (error) { setRequestError({ title: 'Unable to remember open file', message: messageFor(error, 'The file is open, but could not be remembered for next time.') }); } }} /> : <SharedWorkspaceSetup stream={activeWorkstream} repository={repository} desktop={isDesktop()} canInitialize={can('CREATE_WORKSTREAM')} busy={busy || repositoryLoading || remoteLoading} downloading={downloading} error={repositoryError || remoteError} remote={remoteRepository} canManageRepository={canManageProject} onConfigure={() => setDialog({ kind: 'repository-settings', project })} onDownload={can('JOIN_WORKSTREAM') ? () => void downloadProject(project, team!.teamId) : undefined} onConnect={() => void chooseRepository()} onInitialize={() => void setupSharedWorkspace()} onRetry={() => setRepositoryAttempt((attempt) => attempt + 1)} onExplore={() => setPanel('explorer')} />}</div>
 
   </div> : !project ? <section className="team-content grid min-h-[420px] place-items-center bg-[#f8f7f2] px-7 text-center">
     <div>
@@ -337,7 +340,7 @@ export function Workspace() {
     <section className={`editor-stage m-1 min-h-[calc(100dvh-.5rem)] rounded-2xl border border-[#d8d6ce] bg-[#f8f7f2] ${activeWorkstream ? 'overflow-hidden' : 'px-4 py-8 sm:px-8 lg:px-12 lg:py-10'}`}>
 
       <div className={activeWorkstream ? 'h-[calc(100dvh-.5rem)] w-full' : 'mx-auto w-full max-w-[1400px]'}>
-        <div className={activeWorkstream ? 'h-full' : ''} id="team-workspace">{workspaceContent}</div>
+        <div className={activeWorkstream ? 'h-full' : ''} id="team-workspace">{!activeWorkstream && versionNotice}{workspaceContent}</div>
         {!activeWorkstream && <div className="mt-4">
           <NoticeView notice={notice} />
         </div>}

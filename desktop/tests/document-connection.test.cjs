@@ -360,6 +360,23 @@ test('lost receipts survive restart and retry exact bytes without duplicate hist
   assert.ok(messages.some(({ data }) => typeof data !== 'string' && Buffer.from(data).toString('base64') === pending[0]));
 });
 
+test('close recovery persists the exact accepted revision alongside its document snapshot', async () => {
+  const storage = memoryStorage();
+  const a = open('base', undefined, storage); await settle();
+  const remote = new Y.Doc({ gc: false });
+  remote.getText('content').insert(0, 'remote:');
+  sockets[0].deliver(JSON.stringify({ type: 'revision', sequence: 17 }));
+  sockets[0].deliver(Y.encodeStateAsUpdate(remote));
+  await settle();
+  const saved = await a.connection.persist();
+  assert.equal(saved.sequence, 17);
+  const restored = new Y.Doc({ gc: false });
+  Y.applyUpdate(restored, Buffer.from(saved.snapshot, 'base64'));
+  assert.equal(restored.getText('content').toString(), a.text.toString());
+  assert.ok(restored.getText('content').toString().includes('remote:'));
+  restored.destroy(); remote.destroy();
+});
+
 test('no update leaves the device before its local persistence completes', async () => {
   const base = memoryStorage(); let release;
   const storage = { load: base.load, save: async (value) => {
