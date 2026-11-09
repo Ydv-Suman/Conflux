@@ -584,7 +584,7 @@ Conflux will distinguish **who authored a change**, **who submitted an update**,
 
 The live document relay records authenticated update submitters, server timestamps, and document sequences. Its activity API is not an authorship ledger: initialization or reconnect snapshots can contain other people's changes. An internal validator and versioned journal now support durable account-bound writers, edit provenance, and retry-safe receipts. The desktop now negotiates attributed editing for eligible new documents and preserves pending operation identities through reconnects and reopening. Initial file contents remain unknown-author imports; eligible legacy files now migrate on a clean reconnect/reopen when no collaborators remain in the room. Old records remain unverified; only future edits receive attribution. An admin/lead Contributions dashboard now reports validated account edits and links to before/after snapshots. Shared file history now provides read-only version comparisons for authorized collaborators. Explicit ownership reports, self-records, and corrections remain planned. See [the attribution journal](services/collaboration-service/ATTRIBUTION_JOURNAL.md) for compatibility and remaining work.
 
-The next implementation priority is native validation of attributed editing and member self-records and audited corrections before live cursors. Original edit attribution must survive concurrent editing, offline work, retries, reconnects, restarts, and file renames. Imported or historical content with unverified authorship must remain explicitly unknown. Corrections must preserve the original record and an audit trail; shared work and future agent-generated changes need explicit provenance.
+The user has completed native attribution/history validation. Live file initials and named remote cursors/selections are now implemented; validate them in two native clients, then progress to a Git changes panel and coordinated shared checkpoints. Member self-records and audited corrections remain separate reporting work. Original edit attribution must survive concurrent editing, offline work, retries, reconnects, restarts, and file renames. Imported or historical content with unverified authorship must remain explicitly unknown. Corrections must preserve the original record and an audit trail; shared work and future agent-generated changes need explicit provenance.
 
 ### Planned visibility
 
@@ -2001,7 +2001,7 @@ These should be treated as normal distributed-system states rather than exceptio
 
 # Development Strategy
 
-The first milestone should contain **no AI**. The milestones below describe the overall product progression; the current next step is reliable contribution attribution and file history, followed by live cursors, shared Git checkpoints, terminals, and agents. Advanced contribution reporting depends on the relevant task, review, and checkpoint workflows.
+The first milestone should contain **no AI**. The milestones below describe the overall product progression; attribution and close-triggered file history are implemented, and live cursors/file initials are ready for native validation, followed by shared Git checkpoints, terminals, and agents. Advanced contribution reporting depends on the relevant task, review, and checkpoint workflows.
 
 ## Milestone 1 - Multiplayer Editor
 
@@ -2043,7 +2043,7 @@ Both documents converge
 Both local files persist correctly
 ```
 
-Reconnect synchronization is implemented. Validate attribution and file history next, then add remote cursors and selections.
+Reconnect synchronization, attribution, and close-triggered file history are implemented. Live remote cursors, selections, and file initials are implemented; validate them in two native clients before shared Git checkpoints.
 
 If this layer is unreliable, AI agents will only make the system harder to debug.
 
@@ -2365,7 +2365,7 @@ and human authority.
 
 Authenticated collaborative editing, durable backend receipts, desktop SQLite recovery and retries, and team presence are implemented. The manual two-user desktop checks passed as reported by the user on 2026-11-05.
 
-The next milestone is reliable edit attribution and file history, including backend permissions for restricted contribution and ownership reporting. The admin/lead Contributions dashboard covers validated account edits with evidence snapshots. Live cursors, shared Git checkpoints, shared terminals, and AI workflows remain planned. The existing activity API identifies update submitters, not verified original authors.
+Edit attribution and close-triggered file history are implemented with scoped backend permissions. The admin/lead Contributions dashboard covers validated account edits with evidence snapshots. Active-file initials and named live cursors/selections are implemented on a separate ephemeral workstream connection and await native visual acceptance. Shared Git checkpoints, shared terminals, and AI workflows remain planned. The existing activity API identifies update submitters, not verified original authors.
 
 AI functionality will be introduced only after realtime human collaboration is reliable.
 

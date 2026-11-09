@@ -24,6 +24,7 @@ function harness(onChange, files = [{ path: 'main.ts', name: 'main.ts', director
     if (name === 'react') return react;
     if (name === 'react-dom') return { createPortal: node => node };
     if (name === '../../components/Modal') return { Modal: ({ children, onClose }) => require('react').createElement('section', { role: 'dialog', onClose }, children) };
+    if (name === '../teams/CollaboratorBadges') return { CollaboratorBadges: () => null };
     if (name === './MaterialIcon') return { MaterialIcon: () => null };
     return require(name);
   }, module, module.exports);

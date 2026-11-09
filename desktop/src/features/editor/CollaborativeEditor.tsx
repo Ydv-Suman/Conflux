@@ -16,6 +16,8 @@ import { createAutoSave } from './autoSave';
 import { languageForPath } from './editorLanguage';
 import { connectDocument, documentIdForPath, type ConnectionPhase, type DocumentConnectionState } from './documentConnection';
 import type { VersionQueue } from '../history/versionQueue';
+import { createLiveCursors } from './liveCursors';
+import type { LiveCollaboration } from '../teams/useWorkstreamPresence';
 import { snapshotText } from './documentSnapshot';
 
 export type EditorVersionControl = { prepare: () => Promise<boolean> };
@@ -38,7 +40,9 @@ export function CollaborativeEditor({
   onSave,
   versions,
   onVersionControl,
+  collaboration,
 }: {
+  collaboration?: LiveCollaboration;
   projectId: string;
   workstreamId: string;
   teamId: string;
@@ -66,6 +70,8 @@ export function CollaborativeEditor({
   const [localDirty, setLocalDirty] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
+  const activeRef = useRef(active); activeRef.current = active;
+  const cursorRef = useRef<ReturnType<typeof createLiveCursors> | null>(null);
   const documentKey = stableId ?? documentIdForPath(filePath);
   useEffect(() => {
     if (!container.current) return;
@@ -111,6 +117,13 @@ export function CollaborativeEditor({
       onSaving: setSaving,
     });
     const binding = new MonacoBinding(text, model, new Set([editor]));
+    let connected = false;
+    const cursors = collaboration ? createLiveCursors(doc, text, model, editor, (anchor, head) => {
+      if (activeRef.current && connected) collaboration.cursor(documentKey, anchor, head);
+    }) : null;
+    cursorRef.current = cursors;
+    const unsubscribe = collaboration?.subscribe(() => cursors?.setPeers(collaboration.peers(documentKey)));
+
     const documentChanged = (_update: Uint8Array, origin: unknown) => { if (origin === binding) userEdited = true; reportDirty(); autosave.changed(); };
     doc.on('update', documentChanged);
     const blurListener = editor.onDidBlurEditorWidget(() => { void autosave.flush(); });
@@ -129,6 +142,9 @@ export function CollaborativeEditor({
         pending = state.pending;
         writable = state.ready && state.writable !== false && state.phase !== 'denied' && state.phase !== 'error';
         editor.updateOptions({ readOnly: closing || !writable });
+        connected = state.phase === 'connected';
+        if (connected && activeRef.current) cursors?.publish();
+        else if (activeRef.current) collaboration?.clear(documentKey);
         setConnection(state);
         callbacks.current.onConnectionChange(state.phase);
         reportDirty();
@@ -160,6 +176,7 @@ export function CollaborativeEditor({
 
     return () => {
       disposed = true;
+      unsubscribe?.(); cursors?.dispose(); cursorRef.current = null; collaboration?.clear(documentKey);
       autosave.dispose();
       blurListener.dispose();
       connection.dispose();
@@ -174,7 +191,7 @@ export function CollaborativeEditor({
       model.dispose();
       doc.destroy();
     };
-  }, [documentKey, projectId, workstreamId, teamId, versions]);
+  }, [documentKey, projectId, workstreamId, teamId, versions, collaboration]);
 
   useEffect(() => { monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs'); }, [theme]);
   useEffect(() => {
@@ -192,9 +209,11 @@ export function CollaborativeEditor({
   }, [fontSize, fontFamily]);
   useEffect(() => {
     if (!active) return;
+    collaboration?.setDocument(documentKey);
+    cursorRef.current?.publish();
     const frame = requestAnimationFrame(() => { editorRef.current?.layout(); editorRef.current?.focus(); });
     return () => cancelAnimationFrame(frame);
-  }, [active]);
+  }, [active, collaboration, documentKey]);
 
   return <section className="collaborative-editor flex h-full min-h-0 flex-col overflow-hidden bg-[#fffefa]">
     {(connection.message || saveError || connection.phase !== 'connected') && <div className="collaboration-status">

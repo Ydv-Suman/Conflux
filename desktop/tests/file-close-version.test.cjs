@@ -30,6 +30,7 @@ function harness(documentId = 'file-a') {
     'y-monaco': { MonacoBinding: class { constructor() { binding = this; } destroy() {} } },
     '../../config': { COLLABORATION_WS_URL: 'ws://local' }, '../auth/session': { getCurrentUser: () => ({ id: 'user' }), getCollaborationToken() {} },
     './documentStorage': { ...storage, nativeDocumentStorage: () => ({}) }, './documentSnapshot': snapshot,
+    './liveCursors': {},
     './editorLanguage': { languageForPath: () => 'plaintext' },
     './autoSave': load('editor/autoSave.ts'),
     './documentConnection': { connectDocument: input => {

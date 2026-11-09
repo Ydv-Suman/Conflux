@@ -472,3 +472,24 @@ html[data-theme="dark"] .font-size-error { color: #f59999; }
   [data-theme="dark"] .settings-link:hover { color: #c6dbf5; }
   [data-theme="dark"] .account-danger h3 { color: #e29b92; }
 }
+
+.collaborator-badges, .explorer-entry .collaborator-badges {
+  display: inline-flex; gap: 3px; flex-shrink: 0; overflow: visible; align-items: center;
+}
+.collaborator-initial, .explorer-entry .collaborator-initial {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 17px; height: 17px; border-radius: 50%; color: white; overflow: visible;
+  font: 600 10px/1 system-ui, sans-serif; text-transform: uppercase;
+}
+.collaborator-cursor { border-left: 2px solid; pointer-events: none; position: relative; }
+.collaborator-cursor .collaborator-initial { position: absolute; left: -1px; top: -15px; pointer-events: auto; }
+.collaborator-selection-blue { background: #2563eb30; }
+.collaborator-selection-green { background: #04785730; }
+.collaborator-selection-violet { background: #7c3aed30; }
+.collaborator-selection-rose { background: #be185d30; }
+.collaborator-selection-amber { background: #b4530930; }
+.collaborator-selection-teal { background: #0f766e30; }
+.collaborator-selection-red { background: #b91c1c30; }
+.collaborator-selection-slate { background: #47556930; }
+
+.collaborator-overflow { background: #475569; font-size: 9px; }
