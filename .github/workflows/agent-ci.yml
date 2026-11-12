@@ -1,0 +1,60 @@
+name: Agent Service CI
+
+on:
+  push:
+    paths:
+      - services/agent-service/**
+      - .github/workflows/agent-ci.yml
+  pull_request:
+    paths:
+      - services/agent-service/**
+      - .github/workflows/agent-ci.yml
+  workflow_dispatch:
+
+concurrency:
+  group: agent-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: services/agent-service
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.8"
+          enable-cache: true
+          working-directory: services/agent-service
+          cache-dependency-glob: uv.lock
+
+      - name: Install pinned Python
+        run: uv python install
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Check dependency compatibility
+        run: uv pip check
+
+      - name: Check Python syntax
+        run: uv run --locked python -m compileall -q app tests
+
+      - name: Test application routes
+        run: uv run --locked python -m unittest discover -s tests -v
+
+      - name: Smoke-test HTTP server on port 8000
+        shell: bash
+        run: |
+          uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 --max-time 5 http://127.0.0.1:8000/health | uv run --locked python -c 'import json, sys; assert json.load(sys.stdin) == {"status": "ok", "service": "agent-service"}'
