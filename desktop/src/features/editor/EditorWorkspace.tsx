@@ -1,5 +1,4 @@
 import type { LiveCollaboration } from '../teams/useWorkstreamPresence';
-import type { Collaborator } from '../teams/collaborators';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { FileHistory } from '../history/FileHistory';
 import { CollaborativeEditor, type EditorVersionControl } from './CollaborativeEditor';
@@ -8,8 +7,8 @@ import { FileTabs, filePanelId, fileTabId } from './FileTabs';
 import { editorTabsReducer, type EditorFile } from './editorTabs';
 import type { TeamPresenceState } from '../teams/presenceConnection';
 
-export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, fontSize, fontFamily, onSave, onActivate, onEmpty, onDirtyStateChange, entries, treeReady, onDirtyPathsChange, presence, onRetryPresence, versions, collaboration, collaborators }: {
-  collaboration?: LiveCollaboration; collaborators?: Collaborator[];
+export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, fontSize, fontFamily, onSave, onActivate, onEmpty, onDirtyStateChange, entries, treeReady, onDirtyPathsChange, presence, onRetryPresence, versions, collaboration }: {
+  collaboration?: LiveCollaboration;
   versions: VersionQueue | null;
   presence: TeamPresenceState | null; onRetryPresence: () => void;
   entries: { id: string; path: string }[]; treeReady: boolean; onDirtyPathsChange: (paths: string[]) => void;
@@ -58,7 +57,7 @@ export function EditorWorkspace({ file, projectId, workstreamId, teamId, theme, 
     finally { locks.current.delete(id); setBusyPaths(current => current.filter(path => path !== item.path)); }
   };
   return <div className="flex h-full min-h-0 flex-col">
-    <FileTabs collaborators={collaborators} busyPaths={busyPaths} onHistory={activeFile?.documentId ? () => setHistoryFile(activeFile) : undefined} onRetryPresence={onRetryPresence} presence={presence} files={tabs.files} activePath={tabs.activePath} onSelect={(path) => dispatch({ type: 'select', path })} onClose={item => { void closeFile(item); }} />
+    <FileTabs busyPaths={busyPaths} onHistory={activeFile?.documentId ? () => setHistoryFile(activeFile) : undefined} onRetryPresence={onRetryPresence} presence={presence} files={tabs.files} activePath={tabs.activePath} onSelect={(path) => dispatch({ type: 'select', path })} onClose={item => { void closeFile(item); }} />
     {versionError && <p className="m-0 px-4 py-2 text-sm" role="alert">{versionError}</p>}
     <div className="min-h-0 flex-1">{tabs.files.map((item) => <div className="h-full" hidden={item.path !== tabs.activePath} role="tabpanel" id={filePanelId(item.path)} aria-labelledby={fileTabId(item.path)} key={item.documentId ?? item.path}>
       <CollaborativeEditor collaboration={collaboration} versions={versions} onVersionControl={control => { const id = item.documentId ?? item.path; if (control) controls.current.set(id, control); else controls.current.delete(id); }} teamId={teamId} projectId={projectId} workstreamId={workstreamId} filePath={item.path} documentId={item.documentId} initialContent={item.content} theme={theme} fontSize={fontSize} fontFamily={fontFamily} active={item.path === tabs.activePath} onSave={(content, previousContent) => onSave(item.path, content, previousContent)} onDirtyChange={(dirty) => dispatch({ type: 'dirty', path: item.path, dirty })} onConnectionChange={(phase) => dispatch({ type: 'connection', path: item.path, phase })} />

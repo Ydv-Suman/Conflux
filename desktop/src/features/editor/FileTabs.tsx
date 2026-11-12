@@ -1,5 +1,3 @@
-import { CollaboratorBadges } from '../teams/CollaboratorBadges';
-import type { Collaborator } from '../teams/collaborators';
 import { useEffect, useRef } from 'react';
 import type { EditorFile } from './editorTabs';
 import { TeamPresenceIndicator } from '../teams/TeamPresenceIndicator';
@@ -8,8 +6,7 @@ import type { TeamPresenceState } from '../teams/presenceConnection';
 export const fileTabId = (path: string) => `file-tab-${encodeURIComponent(path)}`;
 export const filePanelId = (path: string) => `file-panel-${encodeURIComponent(path)}`;
 
-export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence, onHistory, busyPaths = [], collaborators }: {
-  collaborators?: Collaborator[];
+export function FileTabs({ files, activePath, onSelect, onClose, presence, onRetryPresence, onHistory, busyPaths = [] }: {
   onHistory?: () => void;
   busyPaths?: string[];
   presence: TeamPresenceState | null; onRetryPresence: () => void;
@@ -30,7 +27,7 @@ export function FileTabs({ files, activePath, onSelect, onClose, presence, onRet
         else return;
         event.preventDefault(); onSelect(files[next].path);
         bar.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-      }}><span>{file.path.split('/').pop()}</span><CollaboratorBadges participants={collaborators} documentId={file.documentId} />{file.dirty && <span className="file-tab-dirty" aria-label="Unsaved changes">●</span>}</button>
+      }}><span>{file.path.split('/').pop()}</span>{file.dirty && <span className="file-tab-dirty" aria-label="Unsaved changes">●</span>}</button>
       <button className="file-tab-close" type="button" disabled={busyPaths.includes(file.path)} aria-label={`Close ${file.path}`} title={`Close ${file.path}`} tabIndex={file.path === activePath ? 0 : -1} onClick={() => onClose(file)}>×</button>
     </div>)}
   </div>

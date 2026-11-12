@@ -1,0 +1,9 @@
+.changes-note { font-size: 12px; line-height: 1.6; opacity: .72; margin: 12px 0; }
+.changes-branch { font-weight: 600; font-size: 12px; overflow-wrap: anywhere; }
+.changes-list { padding: 0; margin: 16px -8px; list-style: none; }
+.changes-list button { display: flex; flex-direction: column; gap: 5px; width: 100%; padding: 10px 8px; text-align: left; border-bottom: 1px solid #8883; border-radius: 4px; }
+.changes-list button:hover { background: #59857318; }
+.changes-panel button:focus-visible { outline: 2px solid #598573; outline-offset: 2px; }
+.changes-path, .changes-diff-path { font-family: var(--file-name-font-family, monospace); overflow-wrap: anywhere; font-size: var(--file-name-font-size, 13px); }
+.changes-status { font-size: 11px; opacity: .7; }
+.changes-list .changes-note { margin: 0; }

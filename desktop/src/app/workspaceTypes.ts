@@ -15,4 +15,4 @@ export type Dialog =
 export type Confirmation = { title: string; message: string; label: string; action: () => Promise<void> } | null;
 export type RequestError = { title: string; message: string; actionLabel?: string; action?: () => Promise<void> } | null;
 
-export type Panel = 'explorer' | 'projects' | 'profile' | 'settings' | 'invitations' | null;
+export type Panel = 'changes' | 'explorer' | 'projects' | 'profile' | 'settings' | 'invitations' | null;

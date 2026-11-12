@@ -1,4 +1,5 @@
 //! Repository connections, metadata, and the currently selected local root.
+pub(crate) mod changes;
 pub(crate) mod download;
 pub(crate) mod files;
 mod git;

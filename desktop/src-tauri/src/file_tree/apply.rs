@@ -87,17 +87,30 @@ pub(super) fn apply(root: &Path, recovery: &Path, change: &Change) -> Result<(),
                 return Ok(());
             }
             fs::create_dir_all(recovery).map_err(|e| e.to_string())?;
-            let target = recovery.join(&change.operation_id);
-            if target.exists() {
-                return Err("A recovery copy already exists. Move the conflicting local item aside and retry.".into());
-            }
+            // One operation can be replayed against a recreated item or another
+            // checkout. Atomically reserve a fresh slot without replacing old copies.
+            let mut attempt = 0u64;
+            let slot = loop {
+                let slot = recovery.join(format!("{}.copy-{attempt}", change.operation_id));
+                match fs::create_dir(&slot) {
+                    Ok(()) => break slot,
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => attempt += 1,
+                    Err(error) => {
+                        return Err(format!("Could not reserve a recovery copy: {error}"))
+                    }
+                }
+            };
             // Keep all local contents, including ignored files inside a deleted folder.
-            fs::write(
-                recovery.join(format!("{}.path", change.operation_id)),
-                root.join(&change.path).to_string_lossy().as_bytes(),
-            )
-            .map_err(|e| e.to_string())?;
-            fs::rename(source, target)
+            let mut origin = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(slot.join("original.path"))
+                .map_err(|e| e.to_string())?;
+            origin
+                .write_all(source.to_string_lossy().as_bytes())
+                .and_then(|_| origin.sync_all())
+                .map_err(|e| e.to_string())?;
+            fs::rename(source, slot.join("item"))
                 .map_err(|e| format!("Could not preserve the deleted item: {e}"))?;
         }
         _ => return Err("Unknown file operation".into()),

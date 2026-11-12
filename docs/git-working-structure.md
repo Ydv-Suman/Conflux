@@ -1,8 +1,8 @@
 # Git working structure
 
 Git provides reviewed project checkpoints while live collaboration continues
-through Yjs. This document describes the proposed workflow. Repository inspection
-and local worktree creation already exist; coordinated shared Git checkpoints
+through Yjs. This document describes the proposed workflow. Repository inspection,
+local worktree creation, and the read-only Changes panel already exist; coordinated shared Git checkpoints
 and reconciliation still need implementation.
 
 ## Branch and worktree structure
@@ -144,14 +144,15 @@ does not automatically create a Git commit.
 
 ## Implementation order
 
-1. Changes panel: local Git status and file diffs, including explicit handling of
-   untracked, deleted, renamed, ignored, and unsupported files.
+1. **Implemented:** read-only Changes panel with local Git status and HEAD-to-disk
+   diffs, staged/unstaged labels, Git ignore rules, and explicit unsupported-file
+   errors. Native visual acceptance remains pending.
 2. Consistent shared snapshot capture with document and file-tree boundaries.
 3. Coordinated checkpoint execution, commit/push, and retry-safe publication.
 4. Teammate reconciliation that preserves edits newer than the checkpoint.
 5. Review, merge, base-branch updates, and conflict handling.
 
-The first milestone is a read-only Changes panel. Shared snapshot execution and
+The read-only Changes panel is implemented. Shared snapshot execution and
 reconciliation are the main correctness work before enabling shared commits.
 Later AI agents can propose changes in isolated worktrees and reuse the same
 review and checkpoint foundation.
