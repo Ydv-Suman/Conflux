@@ -23,6 +23,7 @@ export function connectTree(options: {
   let stopped = false;
   let blocked = false;
   let ready = false;
+  let reviewedLocalTree = false;
   let generation = 0;
   let chain = Promise.resolve();
   let timer: ReturnType<typeof setTimeout>;
@@ -54,7 +55,7 @@ export function connectTree(options: {
     }
     timer = setTimeout(() => enqueue(poll), 1000);
   };
-  const receive = async (event: Event) => {
+  const receive = async (event: Event, obsoleteRename = false) => {
     if (event.version <= state.version) {
       if (state.pending?.operationId === event.command.operationId) await persist({ ...state, pending: undefined });
       return;
@@ -62,8 +63,8 @@ export function connectTree(options: {
     if (event.version !== state.version + 1) throw new Error('Shared file history has a gap. Reconnect to replay it.');
     const command = event.command;
     const own = state.pending?.operationId === command.operationId;
-    if (!own && command.path && options.dirtyPaths().some((path) => within(path, command.path!))) throw new Error('A teammate changed an open file or folder. Save or close affected tabs, then retry.');
-    if (!own && command.type !== 'INITIALIZE') await bridge.apply(command, state.observed.find((entry) => entry.path === command.path));
+    if (!obsoleteRename && !reviewedLocalTree && !own && command.path && options.dirtyPaths().some((path) => within(path, command.path!))) throw new Error('A teammate changed an open file or folder. Save or close affected tabs, then retry.');
+    if (!obsoleteRename && !reviewedLocalTree && !own && command.type !== 'INITIALIZE') await bridge.apply(command, state.observed.find((entry) => entry.path === command.path));
     const disk = await bridge.snapshot();
     const entries = applyManifest(state.entries, command);
     // Retain old identities for outstanding local moves while catching up.
@@ -75,21 +76,55 @@ export function connectTree(options: {
     await persist({ version: event.version, entries, observed, pending: own ? undefined : state.pending });
     options.onTree(entries, disk, command);
   };
+  const replayHistory = async (events: Event[], version: number) => {
+    // Account-specific cursors can lag behind an already updated local checkout.
+    // Only skip a missing file's rename when the complete replay deletes its ID.
+    let entries = state.entries, cursor = state.version;
+    for (const event of events) {
+      if (event.version <= cursor) continue;
+      if (event.version !== cursor + 1) throw new Error('Shared file history has a gap. Reconnect to replay it.');
+      entries = applyManifest(entries, event.command); cursor = event.version;
+    }
+    if (cursor !== version) throw new Error('Incomplete shared file replay.');
+    const finalIds = new Set(entries.map(entry => entry.id));
+    for (const event of events) {
+      let obsoleteRename = false;
+      const command = event.command;
+      const source = state.entries.find(entry => entry.path === command.path);
+      if (event.version > state.version && command.type === 'RENAME' && source?.kind === 'FILE' && !finalIds.has(source.id)) {
+        const disk = await bridge.snapshot();
+        obsoleteRename = !disk.some(entry => within(entry.path, command.path!) || within(entry.path, command.targetPath!))
+          && !options.dirtyPaths().some(path => within(path, command.path!) || within(path, command.targetPath!));
+      }
+      await receive(event, obsoleteRename);
+    }
+  };
   const open = async (rejected?: string) => {
     const attempt = ++generation;
     ready = false; status('connecting', 'Synchronizing files…');
     token = await options.getToken(rejected);
     if (stopped || blocked || attempt !== generation) return;
     const ws = new WebSocket(options.endpoint); socket = ws;
+    const replay: Event[] = [];
+    let replayBytes = 0;
     handshake = setTimeout(() => ws.close(), 30000);
     ws.onopen = () => { if (attempt === generation && !stopped) ws.send(JSON.stringify({ teamId: options.teamId, token, afterVersion: state.version })); };
     ws.onmessage = (message) => enqueue(async () => {
       if (attempt !== generation) return;
       const data = JSON.parse(message.data as string);
-      if (data.type === 'event') await receive(data);
+      if (data.type === 'event') {
+        if (ready) await receive(data);
+        else {
+          replayBytes += (message.data as string).length;
+          if (replay.length >= 10000 || replayBytes > 8 * 1024 * 1024) throw new Error('Shared file replay exceeds the recovery limit.');
+          replay.push(data);
+        }
+      }
       else if (data.type === 'synced') {
+        await replayHistory(replay, data.version);
+        replay.length = 0; replayBytes = 0;
         if (data.version !== state.version) throw new Error('Incomplete shared file replay.');
-        clearTimeout(handshake); ready = true; delay = 500; authRetried = false;
+        clearTimeout(handshake); ready = true; reviewedLocalTree = false; delay = 500; authRetried = false;
         if (!data.initialized && !state.pending) await stage({ operationId: crypto.randomUUID(), expectedVersion: 0, type: 'INITIALIZE', entries: await bridge.baseline() });
         else send();
         status('connected', 'Files synchronized');
@@ -128,11 +163,15 @@ export function connectTree(options: {
     },
     reconcile() {
       if (stopped) return;
+      // Explicit reconciliation treats the reviewed disk as authoritative while
+      // replaying the manifest; retrying filesystem mutations would repeat the failure.
+      reviewedLocalTree = true; ready = false;
       blocked = false; ++generation; socket?.close(); clearTimeout(timer); clearTimeout(handshake);
       enqueue(async () => { await persist({ ...state, pending: undefined }); await open(); });
     },
     retry() {
       if (stopped) return;
+      ready = false;
       blocked = false; ++generation; socket?.close(); clearTimeout(timer); clearTimeout(handshake);
       // Preserve the exact pending operation across transport retries. A server
       // conflict requires explicit reconciliation instead of rebasing a delete.

@@ -19,6 +19,8 @@ pub fn run() {
             file_tree::file_tree_save,
             file_tree::file_tree_apply,
             file_tree::file_tree_content,
+            repository::changes::repository_changes,
+            repository::changes::repository_file_diff,
             repository::connect_repository,
             repository::worktree::create_worktree,
             repository::inspect_repository,

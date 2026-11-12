@@ -229,6 +229,54 @@ connects two Yjs clients, destroys and recreates one client from persisted recov
 contributor records and membership revocation. Set `COLLABORATION_JAR` to use another
 packaged relay. This check does not log in through the native desktop UI.
 
+### Recovering a blocked file-tree replay
+
+Catch-up validates the complete replay boundary before applying it. If an older
+account cursor encounters a file rename that is followed by deletion of that
+same stable file ID, and both rename paths are already absent locally, it can
+advance past the obsolete rename. Existing paths and dirty tabs retain conflict
+protection. This supports switching accounts against an already updated checkout.
+
+For unresolved missing-source conflicts, **Retry file sync** retries the same
+operation and preserves the replay cursor. If your local file/folder layout is
+already the intended layout, review it and choose **Use reviewed local tree** in
+Explorer. After confirmation, Conflux catches up the shared manifest without
+applying historical filesystem operations, then publishes differences from the
+reviewed disk. Missing shared files become deletions; local additions and moves
+are shared. This is an explicit choice to use local layout, not a content restore.
+Unsaved affected tabs still require saving or closing before publishing changes.
+
+Shared deletions move local contents into the app data directory's `file-recovery`
+folder. Each attempt atomically reserves `<operation-id>.copy-<number>/`, containing
+`item` (the preserved file or directory) and `original.path` (its original absolute
+path). Replayed deletions of recreated files, or the same operation in another
+local checkout, reserve a new slot and retain all earlier copies. Existing legacy
+`<operation-id>` items and `<operation-id>.path` metadata remain untouched. A failed
+recovery reservation leaves the local source in place and reports the error.
+
+Collaborator initials appear beside files in Explorer; named cursor/selection
+indicators remain in the editor. Open-file tabs show filenames and unsaved state.
+
+## Git Changes
+
+Use **Changes** in the activity rail to inspect the active local worktree. The
+read-only list shows staged and unstaged status, including added, modified,
+deleted, renamed, and untracked files. Click a file for a Monaco comparison of
+HEAD (left) against saved disk contents (right). On an unborn branch, the baseline
+is empty. Ignored untracked files are omitted using Git's ignore rules; tracked
+files remain visible even if they match an ignore rule.
+
+Refresh manually or return focus to the app to read status again. Comparisons are
+point-in-time previews; refresh to read subsequent edits. Unsaved editor text is
+excluded, and local Git status does not prove shared synchronization. Existing
+editor tabs remain mounted while reviewing diffs. Binary, invalid UTF-8, large
+(over 2 MiB), symlink, submodule, and conflicted files produce explicit preview
+errors rather than disappearing. Non-UTF-8 filenames and excessively large
+status output fail visibly. A changed HEAD requires refreshing before comparison.
+
+This milestone does not stage, commit, discard, checkout, or push changes.
+Shared snapshot capture and coordinated checkpoints remain planned.
+
 ## Fonts
 
 Choose **Fonts** in Settings for four controls: **File font size**, **File font

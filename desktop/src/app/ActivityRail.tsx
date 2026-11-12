@@ -16,6 +16,9 @@ export function ActivityRail({ panel, setPanel, invitationInbox, openProfile, on
           <path d="M3.5 9.5h17" />
         </svg>
       </button>
+      <button className="rail-button" type="button" aria-label="Changes" aria-pressed={panel === 'changes'} title="Changes" onClick={() => setPanel(panel === 'changes' ? null : 'changes')}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="5" r="2" /><path d="M6 7v10m12-10v2a5 5 0 0 1-5 5H6" /></svg>
+      </button>
     </div>
     <div className="mt-auto grid gap-1">
       <button className="rail-button relative" type="button" aria-label={`Invitations${invitationInbox.items.length ? ` (${invitationInbox.items.length} pending)` : ''}`} aria-pressed={panel === 'invitations'} title="Invitations" onClick={() => { setPanel(panel === 'invitations' ? null : 'invitations'); void invitationInbox.refresh(); }}>

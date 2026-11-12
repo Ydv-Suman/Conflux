@@ -4,7 +4,7 @@ import { snapshotText } from '../editor/documentSnapshot';
 import { languageForPath } from '../editor/editorLanguage';
 import type { VersionDiff } from './api';
 
-export function HistoryDiff({ diff, theme }: { diff: VersionDiff; theme: 'light' | 'dark' }) {
+export function HistoryDiff({ diff, theme, format = 'snapshot' }: { diff: Pick<VersionDiff, 'path' | 'before' | 'after'>; theme: 'light' | 'dark'; format?: 'snapshot' | 'text' }) {
   const container = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -12,7 +12,9 @@ export function HistoryDiff({ diff, theme }: { diff: VersionDiff; theme: 'light'
     let editor: monaco.editor.IStandaloneDiffEditor | undefined;
     const models: monaco.editor.ITextModel[] = [];
     try {
-      const before = snapshotText(diff.before), after = snapshotText(diff.after);
+      setError('');
+      const before = format === 'text' ? diff.before : snapshotText(diff.before);
+      const after = format === 'text' ? diff.after : snapshotText(diff.after);
       models.push(monaco.editor.createModel(before, languageForPath(diff.path, monaco.languages.getLanguages())));
       models.push(monaco.editor.createModel(after, languageForPath(diff.path, monaco.languages.getLanguages())));
       editor = monaco.editor.createDiffEditor(container.current, {
@@ -24,6 +26,6 @@ export function HistoryDiff({ diff, theme }: { diff: VersionDiff; theme: 'light'
       editor.setModel({ original: models[0], modified: models[1] });
     } catch { setError('This version could not be displayed.'); }
     return () => { editor?.dispose(); models.forEach(model => model.dispose()); };
-  }, [diff, theme]);
+  }, [diff, theme, format]);
   return <>{error && <p role="alert">{error}</p>}<div ref={container} className="file-history-diff" aria-label="Read-only change comparison" /></>;
 }

@@ -94,15 +94,20 @@ fn delete_retains_whole_folder_including_ignored_local_work() {
     apply(&fixture.0, &recovery, &change).unwrap();
     apply(&fixture.0, &recovery, &change).unwrap();
     assert_eq!(
-        fs::read_to_string(recovery.join(&change.operation_id).join(".env")).unwrap(),
+        fs::read_to_string(
+            recovery
+                .join(format!("{}.copy-0", change.operation_id))
+                .join("item/.env")
+        )
+        .unwrap(),
         "private"
     );
     assert!(!fixture.0.join("src").exists());
-    assert!(
-        fs::read_to_string(recovery.join(format!("{}.path", change.operation_id)))
-            .unwrap()
-            .ends_with("/src")
-    );
+    assert!(fs::read_to_string(
+        recovery.join(format!("{}.copy-0/original.path", change.operation_id))
+    )
+    .unwrap()
+    .ends_with("/src"));
 }
 #[test]
 #[cfg(unix)]
@@ -150,4 +155,134 @@ fn rejects_traversal_and_symlinks_and_stale_roots() {
             .any(|e| e.path == "link"));
     }
     assert!(check_root(fixture.0.to_str().unwrap(), &RepositoryState::default()).is_err());
+}
+
+#[test]
+fn replayed_delete_preserves_recreated_content_and_existing_legacy_recovery() {
+    let fixture = Fixture::new();
+    let recovery = fixture.0.join("recovery");
+    fs::create_dir(&recovery).unwrap();
+    let change = fixture.change("DELETE", "this.py");
+    // Existing copies made by older versions must never be changed or discarded.
+    fs::write(recovery.join(&change.operation_id), "legacy backup").unwrap();
+    fs::write(
+        recovery.join(format!("{}.path", change.operation_id)),
+        "legacy path",
+    )
+    .unwrap();
+    let source = fixture.0.join("this.py");
+    for (attempt, content) in ["first local content", "new local edits"]
+        .iter()
+        .enumerate()
+    {
+        fs::write(&source, content).unwrap();
+        apply(&fixture.0, &recovery, &change).unwrap();
+        assert!(!source.exists());
+        let slot = recovery.join(format!("{}.copy-{attempt}", change.operation_id));
+        assert_eq!(fs::read_to_string(slot.join("item")).unwrap(), *content);
+        assert_eq!(
+            fs::read_to_string(slot.join("original.path")).unwrap(),
+            source.to_string_lossy()
+        );
+        // Retrying after the move but before the saved replay cursor is harmless.
+        apply(&fixture.0, &recovery, &change).unwrap();
+    }
+    assert_eq!(
+        fs::read_to_string(recovery.join(&change.operation_id)).unwrap(),
+        "legacy backup"
+    );
+    assert_eq!(
+        fs::read_to_string(recovery.join(format!("{}.path", change.operation_id))).unwrap(),
+        "legacy path"
+    );
+    assert_eq!(
+        fs::read_to_string(recovery.join(format!("{}.copy-0/item", change.operation_id))).unwrap(),
+        "first local content"
+    );
+}
+
+#[test]
+fn deletion_retry_skips_reserved_slots_and_preserves_whole_recreated_directories() {
+    let fixture = Fixture::new();
+    let recovery = fixture.0.join("recovery");
+    fs::create_dir(&recovery).unwrap();
+    let change = fixture.change("DELETE", "src");
+    // A failed/crashed attempt can leave a reserved slot without an item.
+    fs::create_dir(recovery.join(format!("{}.copy-0", change.operation_id))).unwrap();
+    for attempt in 1..=2 {
+        fs::create_dir(fixture.0.join("src")).unwrap();
+        let content = format!("private local work {attempt}");
+        fs::write(fixture.0.join("src/.env"), &content).unwrap();
+        apply(&fixture.0, &recovery, &change).unwrap();
+        assert_eq!(
+            fs::read_to_string(
+                recovery.join(format!("{}.copy-{attempt}/item/.env", change.operation_id))
+            )
+            .unwrap(),
+            content
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(recovery.join(format!("{}.copy-1/item/.env", change.operation_id)))
+            .unwrap(),
+        "private local work 1"
+    );
+}
+
+#[test]
+fn concurrent_checkouts_keep_separate_recovery_copies_for_the_same_delete() {
+    let fixture = Fixture::new();
+    let recovery = fixture.0.join("recovery");
+    let roots = [fixture.0.join("one"), fixture.0.join("two")];
+    for (index, root) in roots.iter().enumerate() {
+        fs::create_dir(root).unwrap();
+        fs::write(root.join("file.py"), format!("checkout {index}")).unwrap();
+    }
+    let change = fixture.change("DELETE", "file.py");
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = roots
+            .iter()
+            .map(|root| {
+                let recovery = &recovery;
+                let change = &change;
+                scope.spawn(move || apply(root, recovery, change))
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+    });
+    let mut contents = HashSet::new();
+    let mut origins = HashSet::new();
+    for attempt in 0..2 {
+        let slot = recovery.join(format!("{}.copy-{attempt}", change.operation_id));
+        contents.insert(fs::read_to_string(slot.join("item")).unwrap());
+        origins.insert(fs::read_to_string(slot.join("original.path")).unwrap());
+    }
+    assert_eq!(
+        contents,
+        HashSet::from(["checkout 0".into(), "checkout 1".into()])
+    );
+    assert_eq!(
+        origins,
+        roots
+            .iter()
+            .map(|root| root.join("file.py").to_string_lossy().into_owned())
+            .collect()
+    );
+    assert!(roots.iter().all(|root| !root.join("file.py").exists()));
+}
+
+#[test]
+fn failed_recovery_reservation_leaves_local_content_intact() {
+    let fixture = Fixture::new();
+    let recovery = fixture.0.join("recovery");
+    fs::write(&recovery, "existing item").unwrap();
+    fs::write(fixture.0.join("file.py"), "local work").unwrap();
+    assert!(apply(&fixture.0, &recovery, &fixture.change("DELETE", "file.py")).is_err());
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("file.py")).unwrap(),
+        "local work"
+    );
+    assert_eq!(fs::read_to_string(recovery).unwrap(), "existing item");
 }

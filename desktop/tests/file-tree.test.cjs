@@ -59,6 +59,7 @@ function harness(saved = null) {
   let disk = [];
   const applied = [], states = [], trees = [];
   let dirty = [];
+  let applyError = null;
   const bridge = {
     load: async () => stored,
     save: async (value) => { stored = structuredClone(value); },
@@ -66,6 +67,8 @@ function harness(saved = null) {
     baseline: async () => [],
     content: async () => '',
     apply: async (command) => {
+      const error = typeof applyError === 'function' ? applyError(command) : applyError;
+      if (error) throw new Error(error);
       applied.push(command);
       if (command.type === 'CREATE') disk.push(diskEntry(command.entry.path, command.entry.id, command.entry.kind));
       if (command.type === 'DELETE') disk = disk.filter((e) => e.path !== command.path && !e.path.startsWith(command.path + '/'));
@@ -73,7 +76,7 @@ function harness(saved = null) {
     },
   };
   const start = () => connectTree({ endpoint: 'ws://test/files', teamId: 'team', bridge, getToken: async () => 'token', dirtyPaths: () => dirty, onTree: (...value) => trees.push(value), onStatus: (value) => states.push(value) });
-  return { start, sockets, applied, states, trees, stored: () => stored, setDisk: (value) => { disk = value; }, setDirty: (value) => { dirty = value; } };
+  return { start, sockets, applied, states, trees, stored: () => stored, setDisk: (value) => { disk = value; }, setDirty: (value) => { dirty = value; }, setApplyError: (value) => { applyError = value; } };
 }
 const event = (version, command) => ({ type: 'event', version, command });
 const init = { operationId: 'init', type: 'INITIALIZE', entries: [] };
@@ -116,11 +119,13 @@ test('dirty remote deletion stops before filesystem mutation or advancing cursor
   const h = harness({ version: 1, entries: [entry('Main.java')], observed: [diskEntry('Main.java')] });
   h.setDisk([diskEntry('Main.java')]); h.setDirty(['Main.java']); const connection = h.start();
   try {
-    await flush(); h.sockets[0].message(event(2, { operationId: 'delete', type: 'DELETE', path: 'Main.java' })); await flush();
+    await flush(); h.sockets[0].message(event(2, { operationId: 'delete', type: 'DELETE', path: 'Main.java' }));
+    h.sockets[0].message({ type: 'synced', initialized: true, version: 2 }); await flush();
     assert.equal(h.states.at(-1).phase, 'error'); assert.equal(h.applied.length, 0); assert.equal(h.stored().version, 1);
     h.setDirty([]); connection.retry(); await flush(); const socket = h.sockets[1]; socket.onopen();
     assert.equal(socket.sent[0].afterVersion, 1);
-    socket.message(event(2, { operationId: 'delete', type: 'DELETE', path: 'Main.java' })); await flush();
+    socket.message(event(2, { operationId: 'delete', type: 'DELETE', path: 'Main.java' }));
+    socket.message({ type: 'synced', initialized: true, version: 2 }); await flush();
     assert.equal(h.applied.length, 1); assert.equal(h.stored().version, 2);
   } finally { connection.dispose(); }
 });
@@ -162,4 +167,124 @@ test('opening a renamed document does not duplicate its existing tab or replace 
   const original = { path: 'before', documentId: 'same-id', content: 'unsaved', dirty: true };
   const result = editorTabsReducer({ files: [original], activePath: 'before' }, { type: 'open', file: { path: 'after', documentId: 'same-id', content: 'disk' } });
   assert.deepEqual(result.files, [{ ...original, path: 'after' }]);
+});
+
+test('reviewed local tree escapes a missing rename source without replaying filesystem mutations', async () => {
+  const observed = [diskEntry('this.py', 'original-inode')];
+  const h = harness({ version: 1, entries: [entry('this.py')], observed });
+  // The file was moved locally while this client missed the shared rename.
+  h.setDisk([diskEntry('local.py', 'original-inode')]);
+  h.setApplyError('Rename source is missing: this.py. Restore it and retry.');
+  const connection = h.start();
+  const rename = { operationId: 'remote-rename', type: 'RENAME', path: 'this.py', targetPath: 'shared.py' };
+  try {
+    await flush(); let socket = h.sockets[0]; socket.onopen();
+    socket.message(event(2, rename)); socket.message({ type: 'synced', initialized: true, version: 2 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'error'); assert.equal(h.stored().version, 1);
+    assert.ok(h.states.at(-1).message.includes('Rename source is missing'));
+    connection.retry(); await flush(); socket = h.sockets[1]; socket.onopen();
+    socket.message(event(2, rename)); socket.message({ type: 'synced', initialized: true, version: 2 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'error'); assert.equal(h.stored().version, 1);
+    connection.reconcile(); await flush(); socket = h.sockets[2]; socket.onopen();
+    assert.equal(socket.sent[0].afterVersion, 1);
+    socket.message(event(2, rename));
+    socket.message({ type: 'synced', initialized: true, version: 2 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'connected'); assert.equal(h.applied.length, 0);
+    assert.equal(h.stored().entries[0].path, 'shared.py');
+    const pending = h.stored().pending;
+    assert.equal(pending.type, 'RENAME'); assert.equal(pending.path, 'shared.py'); assert.equal(pending.targetPath, 'local.py');
+    assert.equal(pending.expectedVersion, 2);
+    socket.message(event(3, pending)); await flush();
+    assert.equal(h.stored().entries[0].path, 'local.py'); assert.equal(h.stored().entries[0].id, 'this.py');
+    assert.equal(h.applied.length, 0);
+  } finally { connection.dispose(); }
+});
+
+test('reviewed local tree publishes a missing file as deletion only after complete replay', async () => {
+  const h = harness({ version: 1, entries: [entry('this.py')], observed: [diskEntry('this.py')] });
+  const connection = h.start();
+  try {
+    await flush(); connection.reconcile(); await flush(); const socket = h.sockets[1]; socket.onopen();
+    socket.message(event(2, { operationId: 'rename', type: 'RENAME', path: 'this.py', targetPath: 'renamed.py' })); await flush();
+    assert.equal(h.stored().pending, undefined); assert.equal(h.applied.length, 0);
+    socket.message({ type: 'synced', initialized: true, version: 2 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'connected');
+    assert.equal(h.stored().pending.type, 'DELETE'); assert.equal(h.stored().pending.path, 'renamed.py');
+    assert.equal(h.stored().pending.expectedVersion, 2);
+  } finally { connection.dispose(); }
+});
+
+test('an older account cursor catches up obsolete rename chains after another account deleted the file', async () => {
+  const h = harness({ version: 10, entries: [entry('this.py')], observed: [diskEntry('this.py', 'inode')] });
+  h.setDisk([]);
+  h.setApplyError(command => command.type === 'RENAME' ? 'Rename source is missing: this.py. Restore it and retry.' : null);
+  const connection = h.start();
+  try {
+    await flush(); const socket = h.sockets[0]; socket.onopen();
+    socket.message(event(11, { operationId: 'move1', type: 'RENAME', path: 'this.py', targetPath: 'that.py' }));
+    socket.message(event(12, { operationId: 'move2', type: 'RENAME', path: 'that.py', targetPath: 'final.py' }));
+    socket.message(event(13, { operationId: 'delete', type: 'DELETE', path: 'final.py' }));
+    await flush();
+    assert.equal(h.stored().version, 10); assert.equal(h.applied.length, 0);
+    socket.message({ type: 'synced', initialized: true, version: 13 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'connected');
+    assert.equal(h.stored().version, 13); assert.deepEqual(h.stored().entries, []);
+    assert.deepEqual(h.applied.map(command => command.type), ['DELETE']);
+    assert.equal(h.stored().pending, undefined); assert.equal(socket.sent.length, 1);
+    // The repaired cursor survives reopening; no historical mutation is repeated.
+    connection.dispose(); const reopened = h.start();
+    try {
+      await flush(); const next = h.sockets[1]; next.onopen();
+      assert.equal(next.sent[0].afterVersion, 13);
+      next.message({ type: 'synced', initialized: true, version: 13 }); await flush();
+      assert.equal(h.states.at(-1).phase, 'connected');
+    } finally { reopened.dispose(); }
+  } finally { connection.dispose(); }
+});
+
+test('catch-up keeps real missing-source errors when the file survives, and never skips existing paths', async () => {
+  for (const existingPath of [null, 'this.py', 'renamed.py']) {
+    const h = harness({ version: 1, entries: [entry('this.py')], observed: [diskEntry('this.py')] });
+    if (existingPath) h.setDisk([diskEntry(existingPath)]);
+    h.setApplyError('Rename source is missing: this.py. Restore it and retry.');
+    const connection = h.start();
+    try {
+      await flush(); const socket = h.sockets[0]; socket.onopen();
+      socket.message(event(2, { operationId: 'rename', type: 'RENAME', path: 'this.py', targetPath: 'renamed.py' }));
+      if (existingPath) socket.message(event(3, { operationId: 'delete', type: 'DELETE', path: 'renamed.py' }));
+      socket.message({ type: 'synced', initialized: true, version: existingPath ? 3 : 2 }); await flush();
+      assert.equal(h.states.at(-1).phase, 'error'); assert.equal(h.stored().version, 1);
+      assert.equal(h.applied.length, 0);
+    } finally { connection.dispose(); }
+  }
+});
+
+test('incomplete or gapped catch-up cannot skip a rename or advance the durable cursor', async () => {
+  for (const version of [3, 4]) {
+    const h = harness({ version: 1, entries: [entry('this.py')], observed: [] });
+    const connection = h.start();
+    try {
+      await flush(); const socket = h.sockets[0]; socket.onopen();
+      socket.message(event(2, { operationId: 'rename', type: 'RENAME', path: 'this.py', targetPath: 'renamed.py' }));
+      if (version === 4) socket.message(event(4, { operationId: 'delete', type: 'DELETE', path: 'renamed.py' }));
+      socket.message({ type: 'synced', initialized: true, version }); await flush();
+      assert.equal(h.states.at(-1).phase, 'error'); assert.equal(h.stored().version, 1);
+      assert.equal(h.applied.length, 0);
+    } finally { connection.dispose(); }
+  }
+});
+
+test('an unsaved tab prevents skipping even an obsolete missing rename', async () => {
+  const h = harness({ version: 1, entries: [entry('this.py')], observed: [diskEntry('this.py')] });
+  h.setDirty(['this.py']);
+  const connection = h.start();
+  try {
+    await flush(); const socket = h.sockets[0]; socket.onopen();
+    socket.message(event(2, { operationId: 'rename', type: 'RENAME', path: 'this.py', targetPath: 'renamed.py' }));
+    socket.message(event(3, { operationId: 'delete', type: 'DELETE', path: 'renamed.py' }));
+    socket.message({ type: 'synced', initialized: true, version: 3 }); await flush();
+    assert.equal(h.states.at(-1).phase, 'error');
+    assert.ok(h.states.at(-1).message.includes('Save or close'));
+    assert.equal(h.stored().version, 1); assert.equal(h.applied.length, 0);
+  } finally { connection.dispose(); }
 });
